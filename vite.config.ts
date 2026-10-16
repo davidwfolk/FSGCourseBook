@@ -28,6 +28,10 @@ export default defineConfig(({ mode }) => {
               routeFile = path.resolve(process.cwd(), 'api/holes.ts');
             } else if (pathname === '/api/r2-presign') {
               routeFile = path.resolve(process.cwd(), 'api/r2-presign.ts');
+            } else if (pathname === '/api/search') {
+              routeFile = path.resolve(process.cwd(), 'api/search.ts');
+            } else if (pathname === '/api/overpass') {
+              routeFile = path.resolve(process.cwd(), 'api/overpass.ts');
             } else {
               return next();
             }
