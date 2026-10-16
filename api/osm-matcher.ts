@@ -1,22 +1,8 @@
 import * as turf from '@turf/turf';
 
-export interface OSMNode {
-  id: number;
-  lat: number;
-  lon: number;
-}
-
-export interface OSMWay {
-  id: number;
-  tags?: Record<string, string>;
-  nodes?: number[];
-  geometry?: Array<{ lat: number; lon: number }>;
-}
-
 export interface MatchedHole {
   hole_number: number;
   par: number;
-  handicap?: number;
   yardage: number;
   tee_lat: number;
   tee_lon: number;
@@ -26,77 +12,38 @@ export interface MatchedHole {
   green_lon: number;
   hole_bearing: number;
   approach_bearing: number;
-  centerline: number[][]; // Array of [lon, lat]
-  green_polygon: any | null;
-  bunkers_geojson: any[];
+  centerline: number[][]; // [[lon, lat], ...]
+  green_polygon: any;
   fairways_geojson: any[];
-  water_geojson?: any[];
-  trees_geojson?: any[];
+  bunkers_geojson: any[];
 }
 
-export interface MatchResult {
-  courseName: string;
-  center_lat: number;
-  center_lon: number;
-  holes: MatchedHole[];
-  unmatchedGreens: any[];
-  hasExplicitHoles: boolean;
+function normalizeBearing(deg: number): number {
+  return (deg + 360) % 360;
 }
 
-/**
- * Normalizes bearing to 0..360 degrees
- */
-export function normalizeBearing(deg: number): number {
-  return ((deg % 360) + 360) % 360;
-}
+export function matchOsmHoles(osmData: any, courseNameFallback: string) {
+  if (!osmData || !Array.isArray(osmData.elements)) {
+    return { courseName: courseNameFallback, center_lat: 0, center_lon: 0, holes: [], unmatchedGreens: [], hasExplicitHoles: false };
+  }
 
-/**
- * Returns an Overpass QL query string centered on lat, lon
- */
-export function getOverpassQuery(lat: number, lon: number, radiusMeters: number = 2200): string {
-  return `[out:json][timeout:35];
-(
-  way["golf"~"hole|green|fairway|bunker|tee|water_hazard|lateral_water_hazard"](around:${radiusMeters},${lat},${lon});
-  node["natural"="tree"](around:${radiusMeters},${lat},${lon});
-  way["natural"="water"](around:${radiusMeters},${lat},${lon});
-);
-out geom;`;
-}
-
-/**
- * Parses raw Overpass JSON elements and executes the Hole 1-18 spatial join.
- */
-export function matchOsmHoles(osmData: { elements: any[] }, courseNameFallback: string = "Custom Golf Course"): MatchResult {
-  const elements = osmData.elements || [];
-
-  const rawHoleWays: Array<{ id: string; ref: string; par: number; coords: number[][] }> = [];
+  const rawHoleWays: Array<{ id: number; ref: string; par: number; coords: number[][] }> = [];
   const greenPolygons: Array<{ id: string; coords: number[][]; center: [number, number]; polygon: any; used?: boolean }> = [];
-  const fairwayPolygons: Array<{ id: string; coords: number[][]; polygon: any; center: [number, number] }> = [];
-  const bunkerPolygons: Array<{ id: string; coords: number[][]; polygon: any; center: [number, number] }> = [];
-  const waterPolygons: Array<{ id: string; coords: number[][]; polygon: any; center: [number, number] }> = [];
-  const treeNodes: Array<{ id: string; coords: [number, number] }> = [];
+  const fairwayPolygons: Array<{ id: string; coords: number[][]; center: [number, number]; polygon: any }> = [];
+  const bunkerPolygons: Array<{ id: string; coords: number[][]; center: [number, number]; polygon: any }> = [];
+  const waterPolygons: Array<{ id: string; coords: number[][]; center: [number, number]; polygon: any }> = [];
 
-  // 1. Parse elements
-  for (const el of elements) {
-    if (el.type === 'way' && el.geometry && el.geometry.length > 0) {
-      const coords: number[][] = el.geometry.map((pt: { lat: number; lon: number }) => [pt.lon, pt.lat]);
-      const gType = el.tags?.golf || '';
-      const nType = el.tags?.natural || '';
+  for (const el of osmData.elements) {
+    if (el.type === 'way' && Array.isArray(el.geometry) && el.geometry.length >= 2) {
+      const gType = (el.tags?.golf || '').toLowerCase();
+      const nType = (el.tags?.natural || '').toLowerCase();
+      const coords = el.geometry.map((pt: any) => [pt.lon, pt.lat]);
 
       if (gType === 'hole') {
         const refStr = el.tags?.ref || el.tags?.name || '';
-        const parVal = parseInt(el.tags?.par || el.tags?.['golf:par'] || '4', 10) || 4;
-        rawHoleWays.push({
-          id: `osm-hole-${el.id}`,
-          ref: refStr,
-          par: parVal,
-          coords
-        });
-        continue;
-      }
-
-      if (coords.length >= 3) {
-        // Ensure polygon ring is closed
+        const parVal = parseInt(el.tags?.par, 10) || 4;
+        rawHoleWays.push({ id: el.id, ref: refStr, par: parVal, coords });
+      } else {
         const ring = [...coords];
         if (ring[0][0] !== ring[ring.length - 1][0] || ring[0][1] !== ring[ring.length - 1][1]) {
           ring.push([...ring[0]]);
@@ -115,20 +62,12 @@ export function matchOsmHoles(osmData: { elements: any[] }, courseNameFallback: 
             } else if (gType.includes('water') || nType === 'water') {
               waterPolygons.push({ id: `osm-water-${el.id}`, coords: ring, center, polygon: poly });
             }
-          } catch (e) {
-            // invalid polygon skipped
-          }
+          } catch {}
         }
       }
-    } else if (el.type === 'node' && el.tags?.natural === 'tree') {
-      treeNodes.push({
-        id: `osm-tree-${el.id}`,
-        coords: [el.lon, el.lat]
-      });
     }
   }
 
-  // Calculate center of course
   let center_lat = 0;
   let center_lon = 0;
   let count = 0;
@@ -150,7 +89,6 @@ export function matchOsmHoles(osmData: { elements: any[] }, courseNameFallback: 
     center_lon /= count;
   }
 
-  // 2. Sort all way["golf"="hole"] features numerically by parseInt(tags.ref)
   const sortedHoleWays = rawHoleWays
     .map(h => {
       const parsedNum = parseInt(h.ref.replace(/\D/g, ''), 10);
@@ -160,8 +98,6 @@ export function matchOsmHoles(osmData: { elements: any[] }, courseNameFallback: 
     .sort((a, b) => (a.holeNum as number) - (b.holeNum as number));
 
   const matchedHoles: MatchedHole[] = [];
-
-  // Deduplicate by holeNum if multiple ways exist with the same ref (keep the longest)
   const uniqueHolesMap = new Map<number, typeof sortedHoleWays[0]>();
   for (const h of sortedHoleWays) {
     const num = h.holeNum as number;
@@ -181,8 +117,8 @@ export function matchOsmHoles(osmData: { elements: any[] }, courseNameFallback: 
     for (const hNum of holeNums) {
       const holeWay = uniqueHolesMap.get(hNum)!;
       const coords = holeWay.coords;
-      const teeNode = coords[0]; // [lon, lat]
-      const greenPinNode = coords[coords.length - 1]; // [lon, lat]
+      const teeNode = coords[0];
+      const greenPinNode = coords[coords.length - 1];
       const pivotNode = coords.length >= 3 ? coords[coords.length - 2] : coords[0];
 
       const tee_lon = teeNode[0];
@@ -192,7 +128,6 @@ export function matchOsmHoles(osmData: { elements: any[] }, courseNameFallback: 
       const pivot_lon = coords.length >= 3 ? pivotNode[0] : null;
       const pivot_lat = coords.length >= 3 ? pivotNode[1] : null;
 
-      // Spatially match green_pin_coord to nearest golf=green polygon centroid within 40m (or up to 60m)
       const pinPt = turf.point([green_lon, green_lat]);
       let bestGreen: typeof greenPolygons[0] | null = null;
       let minGreenDist = Infinity;
@@ -201,7 +136,7 @@ export function matchOsmHoles(osmData: { elements: any[] }, courseNameFallback: 
         if (green.used) continue;
         const gCenterPt = turf.point(green.center);
         const distM = turf.distance(pinPt, gCenterPt, { units: 'meters' });
-        if (distM < minGreenDist && distM <= 60) { // Check within 40-60m
+        if (distM < minGreenDist && distM <= 65) {
           minGreenDist = distM;
           bestGreen = green;
         }
@@ -211,12 +146,10 @@ export function matchOsmHoles(osmData: { elements: any[] }, courseNameFallback: 
       if (bestGreen) {
         bestGreen.used = true;
         green_polygon = bestGreen.polygon;
-        // Optionally snap green pin to green centroid if pin is outside
         green_lon = bestGreen.center[0];
         green_lat = bestGreen.center[1];
       }
 
-      // Calculate hole_bearing (tee -> green) and approach_bearing (pivot -> green)
       const hole_bearing = normalizeBearing(
         turf.bearing(turf.point([tee_lon, tee_lat]), turf.point([green_lon, green_lat]))
       );
@@ -225,33 +158,27 @@ export function matchOsmHoles(osmData: { elements: any[] }, courseNameFallback: 
         ? normalizeBearing(turf.bearing(turf.point([pivot_lon, pivot_lat]), turf.point([green_lon, green_lat])))
         : hole_bearing;
 
-      // Yardage along centerline
       const clLine = turf.lineString(coords);
       const yardage = Math.round(turf.length(clLine, { units: 'meters' }) * 1.0936133);
 
-      // Spatially match golf=fairway and golf=bunker polygons within 45 meters of the hole centerline
       const holeFairways: any[] = [];
       for (const fw of fairwayPolygons) {
         try {
           const distToLineM = turf.pointToLineDistance(turf.point(fw.center), clLine, { units: 'meters' });
-          if (distToLineM <= 45) {
+          if (distToLineM <= 55) {
             holeFairways.push(fw.polygon);
           }
-        } catch (e) {
-          // fallback
-        }
+        } catch {}
       }
 
       const holeBunkers: any[] = [];
       for (const b of bunkerPolygons) {
         try {
           const distToLineM = turf.pointToLineDistance(turf.point(b.center), clLine, { units: 'meters' });
-          if (distToLineM <= 50) {
+          if (distToLineM <= 60) {
             holeBunkers.push(b.polygon);
           }
-        } catch (e) {
-          // fallback
-        }
+        } catch {}
       }
 
       matchedHoles.push({
@@ -286,9 +213,6 @@ export function matchOsmHoles(osmData: { elements: any[] }, courseNameFallback: 
   };
 }
 
-/**
- * Fallback generator for courses with only green polygons or manual points.
- */
 export function buildFallbackHolesFromGreens(
   greenPolygons: Array<{ center: [number, number]; polygon: any }>,
   courseName: string
@@ -302,7 +226,6 @@ export function buildFallbackHolesFromGreens(
     const green_lon = g.center[0];
     const green_lat = g.center[1];
 
-    // Estimate tee 360 yards due south (bearing 180) as placeholder
     const teePt = turf.destination(turf.point([green_lon, green_lat]), 360 * 0.9144, 180, { units: 'meters' });
     const tee_lon = teePt.geometry.coordinates[0];
     const tee_lat = teePt.geometry.coordinates[1];

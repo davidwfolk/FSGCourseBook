@@ -1,5 +1,5 @@
 import { sql } from './db';
-import { matchOsmHoles, buildFallbackHolesFromGreens } from '../src/osm-hole-matcher';
+import { matchOsmHoles, buildFallbackHolesFromGreens } from './osm-matcher';
 
 export default async function handler(req: any, res: any) {
   // Enable CORS

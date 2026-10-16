@@ -894,49 +894,46 @@ let saveToNeonTimer: any = null;
     });
 
     // Auto-Populate 25-Yard Fairway Layup / Approach Dots along Centerline
-    document.getElementById("auto-targets-btn").addEventListener("click", () => {
+    function autoPopulateFairwayDots(force = false) {
       const model = computeSpatialHoleModel();
       const fwFeat = holeData.features.find((f) => f.type === "fairway");
       const clFeat = holeData.features.find((f) => f.type === "centerline");
 
+      if (!force && holeData.features.some((f) => f.type === "target")) {
+        return 0; // Already has fairway targets
+      }
+
       // Remove previous auto-generated targets so we don't duplicate
       holeData.features = holeData.features.filter((f) => !String(f.id).startsWith("auto-targ-"));
 
-      const distancesToFront = [60, 80, 105, 130, 155, 180, 205];
+      const distancesToFront = [40, 60, 80, 105, 130, 155, 180, 205];
       let added = 0;
 
       distancesToFront.forEach((dFront, idx) => {
         const yFromTee = model.frontGreenXY.y - dFront;
-        if (yFromTee < 165) return; // Don't drop markers back on the tee box
+        if (yFromTee < 140) return; // Don't drop markers back on the tee box
 
         // Project point along hole spine (with slight alternating offset like Tour books)
         const latOffset = (idx % 2 === 0 ? 1 : -1) * 2.5;
         const ptLngLat = localYardsToLngLat(model.teeCoord, latOffset, yFromTee, model.holeBearingDeg);
 
-        if (fwFeat && fwFeat.coords.length >= 4) {
-          // Ensure point is near or inside the fairway
-          const subtype = dFront === 105 ? "cross_red" : (dFront === 130 || dFront === 180) ? "cross_gold" : "sprinkler";
-          holeData.features.push({
-            id: `auto-targ-${dFront}`,
-            type: "target",
-            coords: ptLngLat,
-            props: { subtype, elev: 0, label: "", dx: 0, dy: 0 }
-          });
-          added++;
-        } else {
-          const subtype = dFront === 105 ? "cross_red" : dFront === 155 ? "cross_gold" : "sprinkler";
-          holeData.features.push({
-            id: `auto-targ-${dFront}`,
-            type: "target",
-            coords: ptLngLat,
-            props: { subtype, elev: 0, label: "", dx: 0, dy: 0 }
-          });
-          added++;
-        }
+        const subtype = dFront === 105 ? "cross_red" : (dFront === 130 || dFront === 180) ? "cross_gold" : "sprinkler";
+        holeData.features.push({
+          id: `auto-targ-${dFront}`,
+          type: "target",
+          coords: ptLngLat,
+          props: { subtype, elev: 0, label: "", dx: 0, dy: 0 }
+        });
+        added++;
       });
 
       syncMapFromState(false);
-      showToast(`Auto-placed ${added} fairway yardage markers! Drag any dot on the map to adjust.`);
+      return added;
+    }
+
+    document.getElementById("auto-targets-btn").addEventListener("click", () => {
+      const added = autoPopulateFairwayDots(true);
+      showToast(`Auto-placed ${added} fairway yardage markers! Drag any dot on the map or SVG book to adjust.`);
     });
 
     /********************************************************************
@@ -1403,9 +1400,11 @@ let saveToNeonTimer: any = null;
     }
 
     // Switch between Holes 1..18 while preserving edits in courseHolesStore
-    function switchToHoleNumber(targetHoleNum) {
-      // Save current hole first
-      saveStateToLocalStorage();
+    function switchToHoleNumber(targetHoleNum, skipSave = false) {
+      // Save current hole first unless loading freshly
+      if (!skipSave) {
+        saveStateToLocalStorage();
+      }
 
       const hNum = Math.max(1, Math.min(18, parseInt(targetHoleNum, 10) || 1));
       document.getElementById("meta-hole-num").value = hNum;
@@ -1416,6 +1415,26 @@ let saveToNeonTimer: any = null;
         document.getElementById("meta-hole-par").value = holeData.meta?.par || 4;
         document.getElementById("meta-green-slope-dir").value = holeData.meta?.greenSlopeDir || 215;
         document.getElementById("meta-green-slope-pct").value = holeData.meta?.greenSlopePct || 2.8;
+
+        // Auto-generate fairway layup dots if not already present
+        autoPopulateFairwayDots(false);
+
+        // Auto-generate green contours & slope arrows if not present
+        if (!holeData.lidarGrid) {
+          const gFeat = holeData.features.find((f) => f.type === "green");
+          if (gFeat && gFeat.coords.length >= 4) {
+            const model = computeSpatialHoleModel();
+            holeData.lidarGrid = generateSyntheticLidarGrid(
+              model,
+              gFeat,
+              parseFloat(document.getElementById("meta-green-slope-pct").value) || 2.8,
+              parseFloat(document.getElementById("meta-green-slope-dir").value) || 215
+            );
+            // Quietly upgrade to live USGS 3DEP LiDAR in background
+            triggerLidarFetch(true).catch(() => {});
+          }
+        }
+
         syncMapFromState(true);
         showToast(`Switched to Hole ${hNum}`);
       } else {
@@ -1709,17 +1728,50 @@ let saveToNeonTimer: any = null;
       return { arrows, contourSegments, greenCenterElevFt, avgSlope, avgFallDeg };
     }
 
-    document.getElementById("lidar-fetch-btn").addEventListener("click", async () => {
+    function generateSyntheticLidarGrid(model, greenFeat, slopePct = 2.8, slopeDirDeg = 215) {
+      if (!greenFeat || greenFeat.coords.length < 4) return null;
+      const greenPoly = turf.polygon([greenFeat.coords]);
+      const fringePoly = turf.buffer(greenPoly, 1.35, { units: "meters" });
+      const greenPtsYards = greenFeat.coords.map((c) => model.projectToHoleYards(c));
+      const minX = Math.min(...greenPtsYards.map((p) => p.x)) - 2.5;
+      const maxX = Math.max(...greenPtsYards.map((p) => p.x)) + 2.5;
+      const minY = Math.min(...greenPtsYards.map((p) => p.y)) - 2.5;
+      const maxY = Math.max(...greenPtsYards.map((p) => p.y)) + 2.5;
+
+      const anchorCols = 8, anchorRows = 8;
+      const rad = (slopeDirDeg * Math.PI) / 180;
+      const fallX = Math.sin(rad);
+      const fallY = Math.cos(rad);
+      const slopeGrad = (slopePct / 100.0) * 3.0; // ft per yard
+
+      const Z_anchor = Array.from({ length: anchorRows }, (_, r) => {
+        const yYds = minY + (r / (anchorRows - 1)) * (maxY - minY);
+        return Array.from({ length: anchorCols }, (_, c) => {
+          const xYds = minX + (c / (anchorCols - 1)) * (maxX - minX);
+          const tier = 0.45 * Math.sin((xYds * 0.16) + (yYds * 0.14));
+          return -(xYds * fallX + yYds * fallY) * slopeGrad + tier;
+        });
+      });
+
+      return computeDenseGreenLidarField(
+        Z_anchor, anchorCols, anchorRows, minX, maxX, minY, maxY,
+        0, model, greenPoly, fringePoly
+      );
+    }
+
+    async function triggerLidarFetch(silent = false) {
       const greenFeat = holeData.features.find((f) => f.type === "green");
       if (!greenFeat || greenFeat.coords.length < 4) {
-        showToast("Trace or import a Green polygon first before fetching LiDAR!");
+        if (!silent) showToast("Trace or import a Green polygon first before fetching LiDAR!");
         return;
       }
 
       const btnText = document.getElementById("lidar-btn-text");
-      btnText.textContent = "Scanning...";
-      setStatus("Sampling USGS 3DEP 1-Meter LiDAR Elevation Service across Green & Fairway Targets...");
-      showToast("Fetching Dense USGS 3DEP LiDAR Grid...");
+      if (!silent && btnText) btnText.textContent = "Scanning...";
+      if (!silent) {
+        setStatus("Sampling USGS 3DEP 1-Meter LiDAR Elevation Service across Green & Fairway Targets...");
+        showToast("Fetching Dense USGS 3DEP LiDAR Grid...");
+      }
 
       try {
         const model = computeSpatialHoleModel();
@@ -1788,18 +1840,22 @@ let saveToNeonTimer: any = null;
           document.getElementById("meta-green-slope-pct").value = lidarResult.avgSlope;
           document.getElementById("meta-green-slope-dir").value = lidarResult.avgFallDeg;
           syncMapFromState(false);
-          showToast(`USGS 3DEP LiDAR Loaded: ${lidarResult.arrows.length} dense vectors + 0.5ft contours!`);
+          if (!silent) showToast(`USGS 3DEP LiDAR Loaded: ${lidarResult.arrows.length} dense vectors + 0.5ft contours!`);
           setStatus(`USGS 3DEP 1-Meter LiDAR active (${lidarResult.arrows.length} vectors, Avg Slope ${lidarResult.avgSlope}%).`);
-        } else {
+        } else if (!silent) {
           showToast("No USGS 3DEP coverage at this location. Using synthetic model.");
         }
       } catch (err) {
-        console.error("USGS LiDAR error:", err);
-        showToast("USGS 3DEP API busy — try again in a few seconds.");
+        if (!silent) {
+          console.error("USGS LiDAR error:", err);
+          showToast("USGS 3DEP API busy — using synthetic model.");
+        }
       } finally {
-        btnText.textContent = "Fetch LiDAR";
+        if (btnText) btnText.textContent = "Fetch LiDAR";
       }
-    });
+    }
+
+    document.getElementById("lidar-fetch-btn").addEventListener("click", () => triggerLidarFetch(false));
 
     /********************************************************************
      * 6. DUAL-BEARING SPATIAL MODEL (Tee Bearing + Green Approach Bearing)
@@ -2630,17 +2686,18 @@ let saveToNeonTimer: any = null;
       const topOffset = viewMode === "split" ? 285 : 28;
       const totalPlotHeight = viewMode === "split" ? 550 : 795;
 
-      // Base fairway scale (pixels per yard)
-      const baseFwPxPerYard = Math.min(390 / (halfSpanX * 2), (totalPlotHeight * 0.66) / fwSpanY);
+      // Base fairway scale (pixels per yard) - utilize full available vertical height
+      const availableFwHeight = (topOffset + totalPlotHeight) - 240;
+      const baseFwPxPerYard = Math.min(390 / (halfSpanX * 2), (availableFwHeight * 0.95) / fwSpanY);
       const greenPxPerYard = viewMode === "split"
         ? baseFwPxPerYard
-        : Math.min(6.2, baseFwPxPerYard * greenZoomRatio);
+        : Math.min(6.2, baseFwPxPerYard * Math.max(2.1, greenZoomRatio));
 
-      // Screen Y position of the Neck transition
+      // Screen Y position of the Neck transition (gives green top ~25-30% of page)
       const syNeck = viewMode === "split"
         ? topOffset + greenSpanY * baseFwPxPerYard
-        : Math.min(335, Math.max(220, topOffset + greenSpanY * greenPxPerYard));
-      const actualFwPxPerYard = Math.min(baseFwPxPerYard * 1.15, (topOffset + totalPlotHeight - syNeck) / fwSpanY);
+        : Math.min(285, Math.max(180, topOffset + greenSpanY * greenPxPerYard));
+      const actualFwPxPerYard = Math.min(baseFwPxPerYard * 1.08, (topOffset + totalPlotHeight - syNeck) / fwSpanY);
 
       function yardsToPage(ptYards) {
         const dyFromNeck = ptYards.y - yNeck;
@@ -2658,9 +2715,12 @@ let saveToNeonTimer: any = null;
           sy = syNeck - dyFromNeck * actualFwPxPerYard;
         }
 
+        const panDx = (holeData.meta && holeData.meta.pagePan && holeData.meta.pagePan.dx) || 0;
+        const panDy = (holeData.meta && holeData.meta.pagePan && holeData.meta.pagePan.dy) || 0;
+
         return {
-          sx: 270 + (ptYards.x - centerRefX) * localScaleX,
-          sy
+          sx: 270 + (ptYards.x - centerRefX) * localScaleX + panDx,
+          sy: sy + panDy
         };
       }
 
@@ -2826,17 +2886,19 @@ let saveToNeonTimer: any = null;
           const dx = tr.props?.dx || 0;
           const dy = tr.props?.dy || 0;
 
-          svgContent += renderTreeCanopySVG(sPt.sx, sPt.sy, radPx);
-
-          const labelX = (pYards.x < 0 ? sPt.sx - radPx * 0.55 : sPt.sx + radPx * 0.55) + dx;
-          svgContent += renderStackedYardageSVG(
-            labelX,
-            sPt.sy + 4 + dy,
-            frontYds,
-            carryYds > 65 ? carryYds : null,
-            tr.props?.elev || 0,
-            tr.props?.label || ""
-          );
+          svgContent += `
+            <g class="tree-group cursor-grab" data-id="${tr.id}">
+              ${renderTreeCanopySVG(sPt.sx, sPt.sy, radPx)}
+              ${renderStackedYardageSVG(
+                labelX,
+                sPt.sy + 4 + dy,
+                frontYds,
+                carryYds > 65 ? carryYds : null,
+                tr.props?.elev || 0,
+                tr.props?.label || ""
+              )}
+            </g>
+          `;
         });
 
       // 5. FAIRWAY BUNKERS
@@ -2978,6 +3040,110 @@ let saveToNeonTimer: any = null;
       `;
 
       svg.innerHTML = svgContent;
+    }
+
+    // Direct SVG Canvas Drag & Centering
+    const svgEl = document.getElementById("yardage-book-svg") as SVGSVGElement | null;
+    let svgDragState: {
+      type: "feature" | "pan";
+      featId?: string;
+      startX: number;
+      startY: number;
+      initDx: number;
+      initDy: number;
+    } | null = null;
+
+    function getSvgPoint(svgElem: SVGSVGElement, evt: PointerEvent) {
+      const pt = (svgElem as any).createSVGPoint();
+      pt.x = evt.clientX;
+      pt.y = evt.clientY;
+      const ctm = (svgElem as any).getScreenCTM();
+      if (!ctm) return { x: evt.clientX, y: evt.clientY };
+      return pt.matrixTransform(ctm.inverse());
+    }
+
+    if (svgEl) {
+      svgEl.addEventListener("pointerdown", (e: PointerEvent) => {
+        const target = e.target as HTMLElement | SVGElement;
+        const targetGroup = target.closest(".target-point, .tree-group") as SVGElement;
+        const pt = getSvgPoint(svgEl, e);
+
+        if (targetGroup && targetGroup.dataset.id) {
+          const featId = targetGroup.dataset.id;
+          const feat = holeData.features.find((f: any) => String(f.id) === String(featId));
+          svgDragState = {
+            type: "feature",
+            featId,
+            startX: pt.x,
+            startY: pt.y,
+            initDx: feat?.props?.dx || 0,
+            initDy: feat?.props?.dy || 0
+          };
+          try { targetGroup.setPointerCapture(e.pointerId); } catch {}
+          e.stopPropagation();
+        } else {
+          // Canvas Pan & Center
+          holeData.meta = holeData.meta || {};
+          holeData.meta.pagePan = holeData.meta.pagePan || { dx: 0, dy: 0 };
+          svgDragState = {
+            type: "pan",
+            startX: pt.x,
+            startY: pt.y,
+            initDx: holeData.meta.pagePan.dx || 0,
+            initDy: holeData.meta.pagePan.dy || 0
+          };
+          try { svgEl.setPointerCapture(e.pointerId); } catch {}
+        }
+      });
+
+      svgEl.addEventListener("pointermove", (e: PointerEvent) => {
+        if (!svgDragState) return;
+        const pt = getSvgPoint(svgEl, e);
+        const deltaX = pt.x - svgDragState.startX;
+        const deltaY = pt.y - svgDragState.startY;
+
+        if (svgDragState.type === "feature" && svgDragState.featId) {
+          const feat = holeData.features.find((f: any) => String(f.id) === String(svgDragState.featId));
+          if (feat) {
+            feat.props = feat.props || {};
+            feat.props.dx = Math.round(svgDragState.initDx + deltaX);
+            feat.props.dy = Math.round(svgDragState.initDy + deltaY);
+            renderYardageBookSVG();
+          }
+        } else if (svgDragState.type === "pan") {
+          holeData.meta.pagePan = holeData.meta.pagePan || { dx: 0, dy: 0 };
+          holeData.meta.pagePan.dx = Math.round(svgDragState.initDx + deltaX);
+          holeData.meta.pagePan.dy = Math.round(svgDragState.initDy + deltaY);
+          renderYardageBookSVG();
+        }
+      });
+
+      const handlePointerEnd = () => {
+        if (!svgDragState) return;
+        svgDragState = null;
+        saveStateToLocalStorage();
+      };
+
+      svgEl.addEventListener("pointerup", handlePointerEnd);
+      svgEl.addEventListener("pointercancel", handlePointerEnd);
+    }
+
+    const resetPanBtn = document.getElementById("reset-page-pan-btn");
+    if (resetPanBtn) {
+      resetPanBtn.addEventListener("click", () => {
+        if (holeData.meta) {
+          holeData.meta.pagePan = { dx: 0, dy: 0 };
+        }
+        holeData.features.forEach((f: any) => {
+          if (f.props && (f.props.dx || f.props.dy)) {
+            f.props.dx = 0;
+            f.props.dy = 0;
+          }
+        });
+        renderYardageBookSVG();
+        saveStateToLocalStorage();
+        showToast("Centered hole and reset page drag offsets!");
+      });
     }
 
     /********************************************************************
