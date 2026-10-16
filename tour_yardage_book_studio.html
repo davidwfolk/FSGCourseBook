@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>TourBook GIS — Pro Yardage Book Studio & USGA 1:480 LiDAR Generator</title>
+  <title>TourBook GIS Studio v3.0 — Dual-Scale Pro Yardage Book & USGA 1:480 LiDAR Generator</title>
 
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -130,21 +130,21 @@
       <div>
         <div class="flex items-center gap-2">
           <h1 class="font-bold text-sm tracking-tight text-white">TourBook <span class="text-emerald-400">GIS
-              Studio</span></h1>
+              v3.0</span></h1>
           <span
-            class="text-[10px] font-mono-code uppercase px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">USGS
-            3DEP LiDAR + Turf.js</span>
+            class="text-[10px] font-mono-code uppercase px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">Dual-Scale
+            + 3DEP LiDAR</span>
         </div>
-        <p class="text-[11px] text-slate-400 hidden xl:block">Geodesic Satellite Tracer, StrackaLine Yardage Book &
-          USGA 1:480 Green Contour Generator</p>
+        <p class="text-[10px] text-slate-400 hidden 2xl:block">Auto-Saved 18-Hole Course Studio • 1:480 Green +
+          Condensed Fairway Projection</p>
       </div>
     </div>
 
-    <!-- Course Search (Name or Zip Code Dropdown), Hole Switcher, Preset Selector & Importers -->
-    <div class="flex items-center gap-2 flex-1 max-w-4xl mx-2">
-      <div id="course-search-wrapper" class="relative flex-1 min-w-[200px]">
+    <!-- Course Search, 18-Hole Switcher, Presets & Importers -->
+    <div class="flex items-center gap-1.5 flex-1 max-w-5xl mx-1">
+      <div id="course-search-wrapper" class="relative flex-1 min-w-[180px]">
         <input id="course-search-input" type="text" autocomplete="off"
-          placeholder="Search course name or 5-digit zip code (e.g. 83642, Lakeview, BanBury)..."
+          placeholder="Search course name or 5-digit zip (e.g. 83642, Lakeview, BanBury)..."
           class="w-full bg-slate-800/90 border border-slate-700 text-xs text-slate-100 rounded-lg pl-8 pr-20 py-2 focus:outline-none focus:border-emerald-500 transition" />
         <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5"></i>
         <button id="course-search-btn"
@@ -158,58 +158,81 @@
         </div>
       </div>
 
-      <!-- Course 18-Hole Quick Switcher (Appears automatically when a course with mapped holes is selected) -->
-      <select id="course-hole-select" title="Jump directly to any mapped hole on the selected course"
-        class="hidden bg-slate-800 border border-emerald-500/60 text-xs text-emerald-300 font-semibold rounded-lg px-2.5 py-2 focus:outline-none focus:border-emerald-400 cursor-pointer shrink-0">
-        <option value="">Select Hole...</option>
+      <!-- Persistent 18-Hole Course Switcher -->
+      <select id="course-hole-select" title="Switch between Holes 1–18 (All edits auto-save per hole!)"
+        class="bg-slate-800 border border-emerald-500/60 text-xs text-emerald-300 font-semibold rounded-lg px-2 py-2 focus:outline-none focus:border-emerald-400 cursor-pointer shrink-0">
+        <option value="1">Hole 1</option>
+        <option value="2">Hole 2</option>
+        <option value="3">Hole 3</option>
+        <option value="4">Hole 4</option>
+        <option value="5">Hole 5</option>
+        <option value="6">Hole 6</option>
+        <option value="7">Hole 7</option>
+        <option value="8">Hole 8</option>
+        <option value="9">Hole 9</option>
+        <option value="10">Hole 10</option>
+        <option value="11">Hole 11</option>
+        <option value="12">Hole 12</option>
+        <option value="13">Hole 13</option>
+        <option value="14">Hole 14</option>
+        <option value="15">Hole 15</option>
+        <option value="16">Hole 16</option>
+        <option value="17">Hole 17</option>
+        <option value="18">Hole 18</option>
       </select>
 
       <!-- Preset Selector -->
       <select id="preset-select"
-        class="bg-slate-800 border border-slate-700 text-xs text-slate-200 rounded-lg px-2.5 py-2 focus:outline-none focus:border-emerald-500 cursor-pointer shrink-0">
-        <option value="preset1">Preset 1: Championship Par 4 (448 yds)</option>
-        <option value="preset2">Preset 2: Risk/Reward Par 4 (399 yds)</option>
-        <option value="empty">Custom Hole (Current Map View)</option>
+        class="bg-slate-800 border border-slate-700 text-xs text-slate-200 rounded-lg px-2 py-2 focus:outline-none focus:border-emerald-500 cursor-pointer shrink-0">
+        <option value="preset1">Preset 1 (448y Par 4)</option>
+        <option value="preset2">Preset 2 (399y Big Oak)</option>
+        <option value="empty">Blank / Custom</option>
       </select>
 
-      <!-- Overpass OSM Auto-Importer -->
-      <button id="osm-import-btn"
-        title="Isolate and import the single golf hole closest to the center of the current map view from OpenStreetMap"
-        class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium px-3 py-2 rounded-lg flex items-center gap-1.5 shadow-sm transition shrink-0">
+      <!-- Overpass OSM Importer -->
+      <button id="osm-import-btn" title="Pull OSM Hole Vectors in View (or cache all 18 holes of the course)"
+        class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium px-2.5 py-2 rounded-lg flex items-center gap-1 shadow-sm transition shrink-0">
         <i data-lucide="radar" class="w-3.5 h-3.5"></i>
-        <span class="hidden md:inline">Pull OSM Hole</span>
+        <span class="hidden md:inline">Pull OSM</span>
       </button>
 
-      <!-- Real USGS 3DEP LiDAR Scanner Button -->
-      <button id="lidar-fetch-btn"
-        title="Query live USGS 3DEP 1-Meter LiDAR point elevations across the green and fairway targets"
-        class="bg-sky-600 hover:bg-sky-500 text-white text-xs font-medium px-3 py-2 rounded-lg flex items-center gap-1.5 shadow-sm transition shrink-0">
+      <!-- Auto-Populate Fairway Yardage Dots -->
+      <button id="auto-targets-btn"
+        title="Automatically place 100 / 125 / 150 / 175 / 200yd Aim Crosses & Sprinklers along the fairway centerline"
+        class="bg-violet-600 hover:bg-violet-500 text-white text-xs font-medium px-2.5 py-2 rounded-lg flex items-center gap-1 shadow-sm transition shrink-0">
+        <i data-lucide="crosshair" class="w-3.5 h-3.5"></i>
+        <span class="hidden lg:inline">+25y Dots</span>
+      </button>
+
+      <!-- Real USGS 3DEP Dense LiDAR Scanner -->
+      <button id="lidar-fetch-btn" title="Query high-density USGS 3DEP 1-Meter LiDAR grid across the green & targets"
+        class="bg-sky-600 hover:bg-sky-500 text-white text-xs font-medium px-2.5 py-2 rounded-lg flex items-center gap-1 shadow-sm transition shrink-0">
         <i data-lucide="mountain-snow" class="w-3.5 h-3.5"></i>
-        <span id="lidar-btn-text" class="hidden md:inline">Fetch USGS LiDAR</span>
+        <span id="lidar-btn-text" class="hidden md:inline">Fetch LiDAR</span>
       </button>
     </div>
 
-    <!-- Export Actions -->
+    <!-- Save / Export Actions -->
     <div class="flex items-center gap-1.5 shrink-0">
-      <button id="clear-hole-btn" title="Clear all vectors and start tracing fresh on the current satellite view"
-        class="bg-slate-800 hover:bg-rose-950/60 text-slate-300 hover:text-rose-300 border border-slate-700 text-xs font-medium px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 transition">
-        <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
-        <span class="hidden 2xl:inline">Reset Hole</span>
+      <button id="save-project-btn" title="Download entire 18-hole Course Project (.json) to disk"
+        class="bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700 text-xs font-medium px-2.5 py-1.5 rounded-lg flex items-center gap-1 transition">
+        <i data-lucide="save" class="w-3.5 h-3.5"></i>
+        <span class="hidden xl:inline">Save 18</span>
       </button>
-      <button id="geojson-modal-btn"
-        class="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 transition">
+      <button id="geojson-modal-btn" title="Import / Export GeoJSON or Load Course Project"
+        class="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium px-2.5 py-1.5 rounded-lg flex items-center gap-1 transition">
         <i data-lucide="code-2" class="w-3.5 h-3.5 text-emerald-400"></i>
-        <span class="hidden lg:inline">GeoJSON</span>
+        <span class="hidden lg:inline">Data</span>
       </button>
       <button id="export-svg-btn"
-        class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm transition">
+        class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-2.5 py-1.5 rounded-lg flex items-center gap-1 shadow-sm transition">
         <i data-lucide="download" class="w-3.5 h-3.5"></i>
-        <span>Download SVG</span>
+        <span class="hidden sm:inline">SVG</span>
       </button>
       <button id="print-book-btn"
-        class="bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm transition">
+        class="bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-semibold px-2.5 py-1.5 rounded-lg flex items-center gap-1 shadow-sm transition">
         <i data-lucide="printer" class="w-3.5 h-3.5"></i>
-        <span class="hidden sm:inline">Print Book</span>
+        <span class="hidden sm:inline">Print</span>
       </button>
     </div>
   </header>
@@ -223,7 +246,7 @@
 
       <!-- Map Drawing Toolbar (Floating Left) -->
       <div
-        class="absolute top-3 left-3 z-[500] flex flex-col gap-1.5 bg-slate-900/95 backdrop-blur-md p-2 rounded-xl border border-slate-700/80 shadow-2xl w-44">
+        class="absolute top-3 left-3 z-[500] flex flex-col gap-1 bg-slate-900/95 backdrop-blur-md p-2 rounded-xl border border-slate-700/80 shadow-2xl w-44">
         <div
           class="text-[10px] font-semibold uppercase tracking-wider text-slate-400 px-1.5 pb-1 border-b border-slate-800 flex items-center justify-between">
           <span>GIS Vector Tools</span>
@@ -284,6 +307,12 @@
           <span>Drop Aim / Sprinkler</span>
         </button>
 
+        <button data-tool="ridge"
+          class="tool-btn w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-2 text-slate-300 hover:bg-slate-800 transition">
+          <i data-lucide="trending-down" class="w-3.5 h-3.5 text-orange-400 shrink-0"></i>
+          <span>Draw Slope Ridge</span>
+        </button>
+
         <button data-tool="ob"
           class="tool-btn w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-2 text-slate-300 hover:bg-slate-800 transition">
           <i data-lucide="fence" class="w-3.5 h-3.5 text-slate-100 shrink-0"></i>
@@ -305,12 +334,18 @@
 
         <div class="border-t border-slate-800 my-0.5"></div>
 
-        <button id="delete-selected-btn"
-          class="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-2 text-rose-400 hover:bg-rose-500/10 transition disabled:opacity-40"
-          disabled>
-          <i data-lucide="trash-2" class="w-3.5 h-3.5 shrink-0"></i>
-          <span>Delete Selected</span>
-        </button>
+        <div class="flex items-center gap-1">
+          <button id="delete-selected-btn"
+            class="flex-1 text-left px-2 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 text-rose-400 hover:bg-rose-500/10 transition disabled:opacity-40"
+            disabled>
+            <i data-lucide="trash-2" class="w-3.5 h-3.5 shrink-0"></i>
+            <span>Delete</span>
+          </button>
+          <button id="clear-hole-btn" title="Clear current hole vectors"
+            class="px-2 py-1.5 rounded-lg text-[11px] font-medium text-slate-400 hover:text-rose-300 hover:bg-rose-950/50 transition">
+            Reset
+          </button>
+        </div>
       </div>
 
       <!-- Selected Feature Inspector Panel -->
@@ -323,26 +358,39 @@
             <i data-lucide="x" class="w-3.5 h-3.5"></i>
           </button>
         </div>
-        <div class="space-y-2.5 text-xs">
+        <div class="space-y-2 text-xs">
           <div>
-            <label class="block text-[11px] text-slate-400 mb-1">Custom Label (e.g. "Big Oak", "150 Post")</label>
+            <label class="block text-[10px] text-slate-400 mb-0.5">Custom Label (e.g. "Big Oak")</label>
             <input id="prop-label" type="text" placeholder="Optional callout..."
               class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white focus:outline-none focus:border-emerald-500" />
           </div>
           <div class="grid grid-cols-2 gap-2">
             <div>
-              <label class="block text-[11px] text-slate-400 mb-1">Elevation (Yds)</label>
+              <label class="block text-[10px] text-slate-400 mb-0.5">Elevation (Yds)</label>
               <input id="prop-elev" type="number" step="1" placeholder="e.g. +4 or -2"
                 class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white focus:outline-none focus:border-emerald-500" />
             </div>
             <div id="prop-radius-wrap">
-              <label class="block text-[11px] text-slate-400 mb-1">Canopy Radius (Yds)</label>
+              <label class="block text-[10px] text-slate-400 mb-0.5">Canopy Radius (Yds)</label>
               <input id="prop-radius" type="number" min="3" max="25" value="8"
                 class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white focus:outline-none focus:border-emerald-500" />
             </div>
           </div>
+          <!-- Label Nudge Offset Sliders (Prevent overlapping numbers) -->
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-[10px] text-slate-400 mb-0.5">Label Nudge X (px)</label>
+              <input id="prop-dx" type="number" step="2" value="0"
+                class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white focus:outline-none focus:border-emerald-500" />
+            </div>
+            <div>
+              <label class="block text-[10px] text-slate-400 mb-0.5">Label Nudge Y (px)</label>
+              <input id="prop-dy" type="number" step="2" value="0"
+                class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white focus:outline-none focus:border-emerald-500" />
+            </div>
+          </div>
           <div id="prop-marker-type-wrap">
-            <label class="block text-[11px] text-slate-400 mb-1">Symbol Style</label>
+            <label class="block text-[10px] text-slate-400 mb-0.5">Symbol Style</label>
             <select id="prop-subtype" class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white">
               <option value="cross_red">Red Aim Cross (+)</option>
               <option value="cross_gold">Gold Layup Cross (+)</option>
@@ -365,14 +413,15 @@
         <div class="flex items-center gap-3 truncate">
           <span id="status-message" class="text-emerald-400 font-medium flex items-center gap-1.5">
             <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            Ready — Search a course or zip code above, select a hole, or click 'Fetch USGS LiDAR' for real slopes.
+            Auto-Save Active — All 18 holes persist automatically across refreshes.
           </span>
         </div>
-        <div class="flex items-center gap-4 font-mono-code text-[11px] shrink-0">
+        <div class="flex items-center gap-3 font-mono-code text-[11px] shrink-0">
           <span>LiDAR: <strong id="telemetry-lidar" class="text-sky-400">Synthetic</strong></span>
-          <span>Bearing: <strong id="telemetry-bearing" class="text-white">--°</strong></span>
-          <span>Hole Length: <strong id="telemetry-length" class="text-amber-400">-- Yds</strong></span>
-          <span>Green Depth: <strong id="telemetry-depth" class="text-emerald-400">-- Yds</strong></span>
+          <span>Tee Brg: <strong id="telemetry-bearing" class="text-white">--°</strong></span>
+          <span>App Brg: <strong id="telemetry-app-bearing" class="text-emerald-300">--°</strong></span>
+          <span>Length: <strong id="telemetry-length" class="text-amber-400">--y</strong></span>
+          <span>Green: <strong id="telemetry-depth" class="text-emerald-400">--y</strong></span>
         </div>
       </div>
     </div>
@@ -382,46 +431,54 @@
 
       <!-- Studio Controls Bar -->
       <div
-        class="bg-slate-900/90 border-b border-slate-800 px-3 py-2.5 flex flex-wrap items-center justify-between gap-2 shrink-0">
+        class="bg-slate-900/90 border-b border-slate-800 px-3 py-2 flex flex-wrap items-center justify-between gap-1.5 shrink-0">
 
-        <!-- Hole Metadata Inputs -->
+        <!-- Hole & Dual-Scale Projection Controls -->
         <div class="flex items-center gap-1.5 flex-wrap">
           <div class="flex items-center bg-slate-800 rounded-lg border border-slate-700 px-2 py-1">
-            <span class="text-[10px] uppercase text-slate-400 mr-1.5 font-semibold">Course</span>
+            <span class="text-[9px] uppercase text-slate-400 mr-1 font-semibold">Course</span>
             <input id="meta-course-name" type="text" value="Lakeview"
               class="w-20 bg-transparent text-xs font-bold text-white focus:outline-none" />
           </div>
-          <div class="flex items-center bg-slate-800 rounded-lg border border-slate-700 px-2 py-1">
-            <span class="text-[10px] uppercase text-slate-400 mr-1 font-semibold">Hole</span>
+          <div class="flex items-center bg-slate-800 rounded-lg border border-slate-700 px-1.5 py-1">
+            <span class="text-[9px] uppercase text-slate-400 mr-1 font-semibold">Hole</span>
             <input id="meta-hole-num" type="number" min="1" max="18" value="1"
-              class="w-8 bg-transparent text-xs font-bold text-white focus:outline-none text-center" />
+              class="w-7 bg-transparent text-xs font-bold text-white focus:outline-none text-center" />
           </div>
-          <div class="flex items-center bg-slate-800 rounded-lg border border-slate-700 px-2 py-1">
-            <span class="text-[10px] uppercase text-slate-400 mr-1 font-semibold">Par</span>
+          <div class="flex items-center bg-slate-800 rounded-lg border border-slate-700 px-1.5 py-1">
+            <span class="text-[9px] uppercase text-slate-400 mr-1 font-semibold">Par</span>
             <input id="meta-hole-par" type="number" min="3" max="6" value="4"
-              class="w-6 bg-transparent text-xs font-bold text-white focus:outline-none text-center" />
+              class="w-5 bg-transparent text-xs font-bold text-white focus:outline-none text-center" />
           </div>
-          <div class="flex items-center bg-slate-800 rounded-lg border border-slate-700 px-2 py-1"
-            title="Primary Slope Angle across the Green (Degrees)">
-            <span class="text-[10px] uppercase text-slate-400 mr-1 font-semibold">Fall</span>
-            <input id="meta-green-slope-dir" type="number" step="15" value="215"
-              class="w-10 bg-transparent text-xs font-bold text-emerald-400 focus:outline-none text-center" />
-            <span class="text-[10px] text-slate-400">°</span>
+          <div class="flex items-center bg-slate-800 rounded-lg border border-slate-700 px-1.5 py-1"
+            title="Green 1:480 Enlargement Ratio relative to Condensed Fairway (2.4x = Tour Standard)">
+            <span class="text-[9px] uppercase text-emerald-400 mr-1 font-semibold">Green Zoom</span>
+            <input id="meta-green-zoom" type="number" step="0.2" min="1.0" max="3.6" value="2.3"
+              class="w-9 bg-transparent text-xs font-bold text-emerald-300 focus:outline-none text-center" />
+            <span class="text-[9px] text-slate-400">x</span>
           </div>
-          <div class="flex items-center bg-slate-800 rounded-lg border border-slate-700 px-2 py-1"
-            title="Green Stimp / Slope %">
-            <span class="text-[10px] uppercase text-slate-400 mr-1 font-semibold">Slope</span>
+          <div class="flex items-center bg-slate-800 rounded-lg border border-slate-700 px-1.5 py-1"
+            title="Auto-Cutout / OB Corridor Distance outside Fairway Edge (Yards)">
+            <span class="text-[9px] uppercase text-fuchsia-400 mr-1 font-semibold">Cutout</span>
+            <input id="meta-corridor-yds" type="number" step="5" min="10" max="50" value="20"
+              class="w-8 bg-transparent text-xs font-bold text-fuchsia-300 focus:outline-none text-center" />
+            <span class="text-[9px] text-slate-400">y</span>
+          </div>
+          <div class="flex items-center bg-slate-800 rounded-lg border border-slate-700 px-1.5 py-1"
+            title="Synthetic Fallback Slope %">
+            <span class="text-[9px] uppercase text-slate-400 mr-1 font-semibold">Slope</span>
             <input id="meta-green-slope-pct" type="number" step="0.5" min="0.5" max="8" value="2.8"
-              class="w-9 bg-transparent text-xs font-bold text-amber-400 focus:outline-none text-center" />
-            <span class="text-[10px] text-slate-400">%</span>
+              class="w-8 bg-transparent text-xs font-bold text-amber-400 focus:outline-none text-center" />
+            <input id="meta-green-slope-dir" type="hidden" value="215" />
           </div>
         </div>
 
         <!-- View Mode & Toggles -->
-        <div class="flex items-center gap-1.5">
+        <div class="flex items-center gap-1">
           <div class="inline-flex rounded-lg bg-slate-800 p-0.5 border border-slate-700">
             <button data-view="full"
-              class="view-mode-btn bg-emerald-600 text-white text-[11px] font-semibold px-2 py-1 rounded-md transition">
+              class="view-mode-btn bg-emerald-600 text-white text-[11px] font-semibold px-2 py-1 rounded-md transition"
+              title="Dual-Scale Tour Book Page (1:480 Green at Top + Condensed Fairway Landing Zone)">
               Tour Book
             </button>
             <button data-view="split"
@@ -434,16 +491,20 @@
             </button>
             <button data-view="usga"
               class="view-mode-btn text-slate-300 hover:text-white text-[11px] font-semibold px-2 py-1 rounded-md transition"
-              title="USGA 1:480 Scale Green Book with Notes & 10-Band Legend (Lakeview PDF Style)">
+              title="USGA 1:480 Scale Green Book with Dense 2-Yard Arrows, 0.5ft Contours & 10-Band Legend">
               USGA 1:480
             </button>
           </div>
 
+          <button id="toggle-corridor-btn" title="Toggle Auto 20-Yard Fairway Cutout / OB Border"
+            class="p-1.5 rounded-lg bg-slate-800 border border-fuchsia-500/50 text-fuchsia-400 hover:bg-slate-700 transition text-xs">
+            <i data-lucide="scissors" class="w-3.5 h-3.5"></i>
+          </button>
           <button id="toggle-ladders-btn" title="Toggle Side Margin Yardage Ladders"
             class="p-1.5 rounded-lg bg-slate-800 border border-emerald-500/50 text-emerald-400 hover:bg-slate-700 transition text-xs">
             <i data-lucide="ruler" class="w-3.5 h-3.5"></i>
           </button>
-          <button id="toggle-hachures-btn" title="Toggle Mound Hachures & Contours"
+          <button id="toggle-hachures-btn" title="Toggle Bunker & Green Bank Hachures"
             class="p-1.5 rounded-lg bg-slate-800 border border-emerald-500/50 text-emerald-400 hover:bg-slate-700 transition text-xs">
             <i data-lucide="mountain" class="w-3.5 h-3.5"></i>
           </button>
@@ -463,7 +524,7 @@
 
   </div>
 
-  <!-- GEOJSON IMPORT / EXPORT MODAL -->
+  <!-- GEOJSON / PROJECT IMPORT & EXPORT MODAL -->
   <div id="geojson-modal"
     class="hidden fixed inset-0 z-[1000] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
     <div
@@ -471,29 +532,41 @@
       <div class="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between">
         <div class="flex items-center gap-2">
           <i data-lucide="file-json" class="w-4 h-4 text-emerald-400"></i>
-          <h3 class="text-sm font-bold text-white">Hole GeoJSON Vector Data</h3>
+          <h3 class="text-sm font-bold text-white">Hole GeoJSON & Full 18-Hole Project Data</h3>
         </div>
         <button id="close-geojson-modal" class="text-slate-400 hover:text-white">
           <i data-lucide="x" class="w-4 h-4"></i>
         </button>
       </div>
       <div class="p-4 flex-1 overflow-hidden flex flex-col gap-2">
-        <p class="text-xs text-slate-400">
-          Copy this standard GeoJSON FeatureCollection or paste your own custom hole GeoJSON below and click
-          <strong>Load GeoJSON</strong>.
-        </p>
+        <div class="flex items-center justify-between">
+          <p class="text-xs text-slate-400">
+            Copy/Paste single-hole GeoJSON below, or upload a saved 18-hole `.json` course project file:
+          </p>
+          <label
+            class="cursor-pointer bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-3 py-1 rounded-lg transition">
+            <span>Upload Project .JSON</span>
+            <input id="upload-project-input" type="file" accept=".json,.geojson" class="hidden" />
+          </label>
+        </div>
         <textarea id="geojson-textarea"
           class="w-full flex-1 min-h-[320px] bg-slate-950 border border-slate-800 rounded-xl p-3 font-mono-code text-xs text-emerald-300 focus:outline-none focus:border-emerald-500"></textarea>
       </div>
-      <div class="px-5 py-3 bg-slate-950/60 border-t border-slate-800 flex justify-end gap-2">
-        <button id="copy-geojson-btn"
-          class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 transition">
-          Copy to Clipboard
+      <div class="px-5 py-3 bg-slate-950/60 border-t border-slate-800 flex justify-between items-center gap-2">
+        <button id="clear-storage-btn"
+          class="px-3 py-1.5 rounded-lg bg-rose-950/60 hover:bg-rose-900 text-rose-300 text-xs font-medium transition">
+          Clear Browser Cache
         </button>
-        <button id="apply-geojson-btn"
-          class="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white transition">
-          Load GeoJSON into Studio
-        </button>
+        <div class="flex gap-2">
+          <button id="copy-geojson-btn"
+            class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 transition">
+            Copy to Clipboard
+          </button>
+          <button id="apply-geojson-btn"
+            class="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white transition">
+            Load into Studio
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -508,10 +581,11 @@
   <!-- APPLICATION SCRIPT -->
   <script>
     /********************************************************************
-     * 1. SAMPLE CHAMPIONSHIP GOLF HOLE PRESETS (100% Restored)
+     * 1. CONSTANTS, GEOMETRY HELPERS & CHAMPIONSHIP PRESETS
      ********************************************************************/
     const YARD_TO_M = 0.9144;
     const M_TO_YARD = 1.0936133;
+    const STORAGE_KEY = "tourbook_gis_v3_project_state";
 
     function localYardsToLngLat(originLngLat, xYards, yYards, bearingDeg = 0) {
       const distYards = Math.hypot(xYards, yYards);
@@ -560,8 +634,9 @@
         },
         lidarGrid: null,
         features: [
-          { id: "tee-1", type: "tee", coords: pt(0, 0), props: { label: "Back Tee", elev: 0 } },
-          { id: "centerline-1", type: "centerline", coords: [pt(0, 0), pt(-3, 275), pt(-6, 420), pt(-6, 437)], props: {} },
+          { id: "tee-1", type: "tee", coords: pt(0, 0), props: { label: "Back Tee", elev: 1 } },
+          // Note dogleg pivot at (-3, 275) -> approach into green at (-6, 420) so Approach Bearing differs slightly from Tee Bearing!
+          { id: "centerline-1", type: "centerline", coords: [pt(0, 0), pt(-2, 275), pt(-6, 420), pt(-6, 437)], props: {} },
           {
             id: "fairway-1",
             type: "fairway",
@@ -583,6 +658,19 @@
               [-6, 453], [6, 452], [11, 445], [9, 434], [2, 424]
             ]),
             props: {}
+          },
+          // Intentional Fairway Slope Ridges (Matching Photo 1 tiers at 315y and 380y carry)
+          {
+            id: "ridge-fw-1",
+            type: "ridge",
+            coords: [pt(-11, 322), pt(-3, 330), pt(6, 327), pt(12, 318)],
+            props: { label: "" }
+          },
+          {
+            id: "ridge-fw-2",
+            type: "ridge",
+            coords: [pt(-14, 372), pt(-6, 382), pt(2, 376)],
+            props: { label: "" }
           },
           {
             id: "bunker-fw-l1",
@@ -668,7 +756,7 @@
         lidarGrid: null,
         features: [
           { id: "p2-tee", type: "tee", coords: pt(0, 0), props: { label: "Championship Tee", elev: 2 } },
-          { id: "p2-centerline", type: "centerline", coords: [pt(0, 0), pt(2, 250), pt(0, 366), pt(0, 383)], props: {} },
+          { id: "p2-centerline", type: "centerline", coords: [pt(0, 0), pt(3, 250), pt(0, 366), pt(0, 383)], props: {} },
           {
             id: "p2-fairway",
             type: "fairway",
@@ -726,18 +814,21 @@
     }
 
     /********************************************************************
-     * 2. APPLICATION STATE & LEAFLET GIS INITIALIZATION
+     * 2. APPLICATION STATE, 18-HOLE STORAGE & LEAFLET INITIALIZATION
      ********************************************************************/
     let holeData = buildPreset1Hole();
+    let courseHolesStore = {}; // Maps holeNum (1..18) -> { meta, features, lidarGrid }
+    let cachedCourseOSM = null; // Full 18-hole OSM raw cache for the active course
+
     let activeTool = "select";
     let selectedFeatureId = null;
     let drawingPoints = [];
     let tempDrawingLayer = null;
 
     let viewMode = "full"; // 'full' | 'split' | 'green' | 'usga'
+    let showCorridorCutout = true;
     let showLadders = true;
     let showHachures = true;
-    let cachedCourseOSM = null; // Holds all 18 holes when a course is selected
 
     const map = L.map("map", {
       center: [36.5705, -121.9495],
@@ -773,6 +864,86 @@
         <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
         <span>${msg}</span>
       `;
+    }
+
+    // Auto-Save Current Hole & 18-Hole Course Project to localStorage
+    function saveStateToLocalStorage() {
+      try {
+        const curHoleNum = parseInt(document.getElementById("meta-hole-num").value, 10) || 1;
+        holeData.meta = {
+          holeNumber: curHoleNum,
+          par: parseInt(document.getElementById("meta-hole-par").value, 10) || 4,
+          greenSlopeDir: parseFloat(document.getElementById("meta-green-slope-dir").value) || 215,
+          greenSlopePct: parseFloat(document.getElementById("meta-green-slope-pct").value) || 2.8,
+          courseName: document.getElementById("meta-course-name").value || "Lakeview"
+        };
+        courseHolesStore[curHoleNum] = JSON.parse(JSON.stringify(holeData));
+
+        const payload = {
+          version: 3,
+          activeHoleNum: curHoleNum,
+          courseName: holeData.meta.courseName,
+          mapCenter: [map.getCenter().lat, map.getCenter().lng],
+          mapZoom: map.getZoom(),
+          greenZoom: parseFloat(document.getElementById("meta-green-zoom").value) || 2.3,
+          corridorYds: parseFloat(document.getElementById("meta-corridor-yds").value) || 20,
+          courseHolesStore,
+          cachedCourseOSM
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+      } catch (e) {
+        console.warn("Auto-save storage warning:", e);
+      }
+    }
+
+    function loadStateFromLocalStorage() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return false;
+        const parsed = JSON.parse(raw);
+        if (!parsed || !parsed.courseHolesStore) return false;
+
+        courseHolesStore = parsed.courseHolesStore;
+        cachedCourseOSM = parsed.cachedCourseOSM || null;
+        const activeNum = parsed.activeHoleNum || 1;
+
+        if (parsed.courseName) document.getElementById("meta-course-name").value = parsed.courseName;
+        if (parsed.greenZoom) document.getElementById("meta-green-zoom").value = parsed.greenZoom;
+        if (parsed.corridorYds) document.getElementById("meta-corridor-yds").value = parsed.corridorYds;
+
+        if (courseHolesStore[activeNum]) {
+          holeData = courseHolesStore[activeNum];
+          document.getElementById("meta-hole-num").value = activeNum;
+          document.getElementById("course-hole-select").value = String(activeNum);
+          document.getElementById("meta-hole-par").value = holeData.meta?.par || 4;
+          document.getElementById("meta-green-slope-dir").value = holeData.meta?.greenSlopeDir || 215;
+          document.getElementById("meta-green-slope-pct").value = holeData.meta?.greenSlopePct || 2.8;
+        }
+        if (parsed.mapCenter && parsed.mapCenter.length === 2) {
+          map.setView(parsed.mapCenter, parsed.mapZoom || 17);
+        }
+        refreshHoleDropdownBadges();
+        return true;
+      } catch (e) {
+        console.warn("Could not restore state:", e);
+        return false;
+      }
+    }
+
+    function refreshHoleDropdownBadges() {
+      const sel = document.getElementById("course-hole-select");
+      const curVal = sel.value || "1";
+      let html = "";
+      for (let h = 1; h <= 18; h++) {
+        const stored = courseHolesStore[h];
+        const hasGreen = stored && stored.features && stored.features.some((f) => f.type === "green");
+        const hasLidar = stored && stored.lidarGrid;
+        const parStr = stored?.meta?.par ? ` (Par ${stored.meta.par})` : "";
+        const badge = hasLidar ? " ★" : hasGreen ? " ✓" : "";
+        html += `<option value="${h}">Hole ${h}${parStr}${badge}</option>`;
+      }
+      sel.innerHTML = html;
+      sel.value = String(curVal);
     }
 
     function purgeDistantFeaturesIfNeeded(newCoord) {
@@ -882,19 +1053,22 @@
             updateInspectorMetrics();
           });
 
+          dragMarker.on("dragend", () => saveStateToLocalStorage());
+
           dragMarker.on("click", (e) => {
             L.DomEvent.stopPropagation(e);
             selectFeature(feat.id);
           });
-        } else if (feat.type === "centerline" || feat.type === "ob") {
+        } else if (feat.type === "centerline" || feat.type === "ob" || feat.type === "ridge") {
           const latlngs = feat.coords.map((c) => [c[1], c[0]]);
           if (feat.type === "centerline") allLatLngs.push(...latlngs);
 
           const isOB = feat.type === "ob";
+          const isRidge = feat.type === "ridge";
           const line = L.polyline(latlngs, {
-            color: isSelected ? "#10b981" : (isOB ? "#ffffff" : "#fbbf24"),
-            weight: isSelected ? 4 : (isOB ? 3 : 2.5),
-            dashArray: isOB ? "8, 5" : "6, 6"
+            color: isSelected ? "#10b981" : isOB ? "#ffffff" : isRidge ? "#fb923c" : "#fbbf24",
+            weight: isSelected ? 4 : isOB ? 3 : 2.5,
+            dashArray: isOB ? "8, 5" : isRidge ? "4, 4" : "6, 6"
           }).addTo(featureLayerGroup);
 
           line.on("click", (e) => {
@@ -914,6 +1088,7 @@
               line.setLatLngs(feat.coords.map((c) => [c[1], c[0]]));
               renderYardageBookSVG();
             });
+            vm.on("dragend", () => saveStateToLocalStorage());
           });
         } else {
           const ring = feat.coords.slice(0, -1);
@@ -955,6 +1130,7 @@
                 poly.setLatLngs(feat.coords.slice(0, -1).map((c) => [c[1], c[0]]));
                 renderYardageBookSVG();
               });
+              vm.on("dragend", () => saveStateToLocalStorage());
             });
           }
         }
@@ -966,6 +1142,8 @@
 
       document.getElementById("telemetry-lidar").textContent = holeData.lidarGrid ? "USGS 3DEP 1m" : "Synthetic";
       renderYardageBookSVG();
+      saveStateToLocalStorage();
+      refreshHoleDropdownBadges();
     }
 
     /********************************************************************
@@ -989,22 +1167,23 @@
         }
       });
 
-      const isPolyOrLine = ["centerline", "ob", "green", "fairway", "bunker", "water", "crop"].includes(toolName);
+      const isPolyOrLine = ["centerline", "ob", "ridge", "green", "fairway", "bunker", "water", "crop"].includes(toolName);
       document.getElementById("finish-shape-btn").classList.toggle("hidden", !isPolyOrLine);
       document.getElementById("map").classList.toggle("map-crosshair", toolName !== "select");
 
       const toolPrompts = {
-        select: "Click any feature to inspect/edit properties, or drag white vertex handles to reshape.",
+        select: "Click any feature to inspect/nudge labels, or drag white vertex handles to reshape.",
         tee: "Click on the satellite map tee box to place the primary Tee Marker.",
-        centerline: "Click Tee -> Fairway Aim Point -> Center of Green, then click 'Complete Shape'.",
+        centerline: "Click Tee -> Dogleg Aim Point -> Center of Green, then click 'Complete Shape'.",
         green: "Click around the perimeter of the putting green, then click 'Complete Shape'.",
         fairway: "Click around the fairway perimeter, then click 'Complete Shape'.",
         bunker: "Click around the bunker perimeter, then click 'Complete Shape'.",
         water: "Click around the water hazard / creek perimeter, then click 'Complete Shape'.",
         tree: "Click anywhere on the map to drop a specimen Tree with automatic yardage callouts.",
         target: "Click anywhere on the fairway to drop an Aim Cross / Sprinkler Head yardage marker.",
-        ob: "Click along the Out of Bounds line (white stakes/fence), then click 'Complete Shape' (or press Enter).",
-        crop: "Click around the exact area you want shown on the page, then click 'Complete Shape' to lock & crop the view."
+        ridge: "Click across a fairway tier or mound slope to draw a Tour Book comb/hachure ridge line.",
+        ob: "Click along an Out of Bounds line (white stakes/fence), then click 'Complete Shape'.",
+        crop: "Click around a custom area to override the automatic 20-yard fairway cutout."
       };
       setStatus(toolPrompts[toolName] || "Ready.");
     }
@@ -1041,7 +1220,7 @@
           id,
           type: "tree",
           coords: lngLat,
-          props: { label: "", elev: 0, radius: 8 }
+          props: { label: "", elev: 0, radius: 8, dx: 0, dy: 0 }
         });
         ensureLocalTeeExists();
         selectFeature(id);
@@ -1056,7 +1235,7 @@
           id,
           type: "target",
           coords: lngLat,
-          props: { subtype: "cross_red", elev: 0, label: "" }
+          props: { subtype: "cross_red", elev: 0, label: "", dx: 0, dy: 0 }
         });
         ensureLocalTeeExists();
         selectFeature(id);
@@ -1065,14 +1244,14 @@
         return;
       }
 
-      if (["centerline", "ob", "green", "fairway", "bunker", "water", "crop"].includes(activeTool)) {
+      if (["centerline", "ob", "ridge", "green", "fairway", "bunker", "water", "crop"].includes(activeTool)) {
         drawingPoints.push(lngLat);
         if (tempDrawingLayer) map.removeLayer(tempDrawingLayer);
 
         const latlngs = drawingPoints.map((c) => [c[1], c[0]]);
-        if (activeTool === "centerline" || activeTool === "ob") {
+        if (activeTool === "centerline" || activeTool === "ob" || activeTool === "ridge") {
           tempDrawingLayer = L.polyline(latlngs, {
-            color: activeTool === "ob" ? "#ffffff" : "#fbbf24",
+            color: activeTool === "ob" ? "#ffffff" : activeTool === "ridge" ? "#fb923c" : "#fbbf24",
             weight: 3,
             dashArray: "5,5"
           }).addTo(map);
@@ -1083,13 +1262,13 @@
             fillOpacity: activeTool === "crop" ? 0.08 : 0.3
           }).addTo(map);
         }
-        setStatus(`Tracing ${activeTool.toUpperCase()}: ${drawingPoints.length} points placed. Click 'Complete Shape' or press Enter when done.`);
+        setStatus(`Tracing ${activeTool.toUpperCase()}: ${drawingPoints.length} points placed. Click 'Complete Shape' or press Enter.`);
       }
     });
 
     function finishActiveShape() {
-      if (!["centerline", "ob", "green", "fairway", "bunker", "water", "crop"].includes(activeTool)) return;
-      const isLine = activeTool === "centerline" || activeTool === "ob";
+      if (!["centerline", "ob", "ridge", "green", "fairway", "bunker", "water", "crop"].includes(activeTool)) return;
+      const isLine = activeTool === "centerline" || activeTool === "ob" || activeTool === "ridge";
       const minPts = isLine ? 2 : 3;
       if (drawingPoints.length < minPts) {
         showToast(`Add at least ${minPts} points to complete ${activeTool}.`);
@@ -1109,12 +1288,14 @@
       } else if (activeTool === "ob") {
         holeData.features.push({ id, type: "ob", coords: [...drawingPoints], props: { label: "O.B." } });
         ensureLocalTeeExists();
+      } else if (activeTool === "ridge") {
+        holeData.features.push({ id, type: "ridge", coords: [...drawingPoints], props: { label: "" } });
+        ensureLocalTeeExists();
       } else {
         if (activeTool === "green") {
           holeData.features = holeData.features.filter((f) => f.type !== "green");
           holeData.lidarGrid = null;
         } else if (activeTool === "crop") {
-          // Only one active Crop Border per hole
           holeData.features = holeData.features.filter((f) => f.type !== "crop");
         }
         const closed = [...drawingPoints, [...drawingPoints[0]]];
@@ -1130,7 +1311,7 @@
       setTool("select");
       selectFeature(id);
       syncMapFromState();
-      showToast(activeTool === "crop" ? "Page Crop Border locked! Drag corners to adjust." : `${activeTool.toUpperCase()} vector created.`);
+      showToast(`${activeTool.toUpperCase()} vector saved.`);
     }
 
     document.getElementById("finish-shape-btn").addEventListener("click", finishActiveShape);
@@ -1163,6 +1344,8 @@
       document.getElementById("prop-label").value = feat.props?.label || "";
       document.getElementById("prop-elev").value = feat.props?.elev ?? "";
       document.getElementById("prop-radius").value = feat.props?.radius ?? 8;
+      document.getElementById("prop-dx").value = feat.props?.dx ?? 0;
+      document.getElementById("prop-dy").value = feat.props?.dy ?? 0;
       document.getElementById("prop-subtype").value = feat.props?.subtype || "cross_red";
 
       document.getElementById("prop-radius-wrap").classList.toggle("hidden", feat.type !== "tree");
@@ -1203,13 +1386,12 @@
       holeData.lidarGrid = null;
       syncMapFromState(false);
       setTool("green");
-      showToast("Cleared! Click 'Pull OSM Hole' or trace the Green & Fairway.");
-      setStatus("Blank canvas on current view — click 'Pull OSM Hole' or trace the Green & Fairway.");
+      showToast("Hole cleared! Click 'Pull OSM' or trace Green & Fairway.");
     }
 
     document.getElementById("clear-hole-btn").addEventListener("click", resetHoleToCurrentView);
 
-    ["prop-label", "prop-elev", "prop-radius", "prop-subtype"].forEach((inputId) => {
+    ["prop-label", "prop-elev", "prop-radius", "prop-dx", "prop-dy", "prop-subtype"].forEach((inputId) => {
       document.getElementById(inputId).addEventListener("input", () => {
         const feat = holeData.features.find((f) => f.id === selectedFeatureId);
         if (!feat) return;
@@ -1218,14 +1400,61 @@
         const elevVal = document.getElementById("prop-elev").value;
         feat.props.elev = elevVal === "" ? 0 : parseInt(elevVal, 10);
         feat.props.radius = parseFloat(document.getElementById("prop-radius").value) || 8;
+        feat.props.dx = parseFloat(document.getElementById("prop-dx").value) || 0;
+        feat.props.dy = parseFloat(document.getElementById("prop-dy").value) || 0;
         feat.props.subtype = document.getElementById("prop-subtype").value;
         syncMapFromState();
       });
     });
 
+    // Auto-Populate 25-Yard Fairway Layup / Approach Dots along Centerline
+    document.getElementById("auto-targets-btn").addEventListener("click", () => {
+      const model = computeSpatialHoleModel();
+      const fwFeat = holeData.features.find((f) => f.type === "fairway");
+      const clFeat = holeData.features.find((f) => f.type === "centerline");
+
+      // Remove previous auto-generated targets so we don't duplicate
+      holeData.features = holeData.features.filter((f) => !String(f.id).startsWith("auto-targ-"));
+
+      const distancesToFront = [60, 80, 105, 130, 155, 180, 205];
+      let added = 0;
+
+      distancesToFront.forEach((dFront, idx) => {
+        const yFromTee = model.frontGreenXY.y - dFront;
+        if (yFromTee < 165) return; // Don't drop markers back on the tee box
+
+        // Project point along hole spine (with slight alternating offset like Tour books)
+        const latOffset = (idx % 2 === 0 ? 1 : -1) * 2.5;
+        const ptLngLat = localYardsToLngLat(model.teeCoord, latOffset, yFromTee, model.holeBearingDeg);
+
+        if (fwFeat && fwFeat.coords.length >= 4) {
+          // Ensure point is near or inside the fairway
+          const subtype = dFront === 105 ? "cross_red" : (dFront === 130 || dFront === 180) ? "cross_gold" : "sprinkler";
+          holeData.features.push({
+            id: `auto-targ-${dFront}`,
+            type: "target",
+            coords: ptLngLat,
+            props: { subtype, elev: 0, label: "", dx: 0, dy: 0 }
+          });
+          added++;
+        } else {
+          const subtype = dFront === 105 ? "cross_red" : dFront === 155 ? "cross_gold" : "sprinkler";
+          holeData.features.push({
+            id: `auto-targ-${dFront}`,
+            type: "target",
+            coords: ptLngLat,
+            props: { subtype, elev: 0, label: "", dx: 0, dy: 0 }
+          });
+          added++;
+        }
+      });
+
+      syncMapFromState(false);
+      showToast(`Auto-placed ${added} fairway yardage markers! Drag any dot on the map to adjust.`);
+    });
+
     /********************************************************************
-     * 5. COURSE SEARCH BY NAME OR ZIP CODE (WITH DISAMBIGUATION DROPDOWN),
-     *    COURSE 18-HOLE SWITCHER & OVERPASS API (OSM) VECTOR IMPORTER
+     * 5. COURSE SEARCH, 18-HOLE OSM CACHE & PERSISTENT HOLE SWITCHING
      ********************************************************************/
     const searchInput = document.getElementById("course-search-input");
     const searchBtn = document.getElementById("course-search-btn");
@@ -1281,16 +1510,11 @@
       const isZipCode = /^\d{5}(-\d{4})?$/.test(rawQuery);
 
       try {
-        let courses = [];
-        if (isZipCode) {
-          courses = await searchCoursesByZip(rawQuery.slice(0, 5));
-        } else {
-          courses = await searchCoursesByName(rawQuery);
-        }
-
-        renderCourseDropdown(courses, rawQuery, isZipCode);
+        let courses = isZipCode
+          ? await searchCoursesByZip(rawQuery.slice(0, 5))
+          : await searchCoursesByName(rawQuery);
+        renderCourseDropdown(courses, rawQuery);
       } catch (err) {
-        console.error("Course search error:", err);
         resultsDropdown.innerHTML = `
           <div class="px-3.5 py-3 text-xs text-rose-400">
             Search failed or timed out. Check connection and try again.
@@ -1301,8 +1525,6 @@
 
     async function searchCoursesByZip(zip) {
       let centerLat = null, centerLon = null, zipCity = "", zipState = "";
-
-      // Fast primary lookup via Zippopotam.us (from ForeCast), fallback to Nominatim
       try {
         const zpRes = await fetch(`https://api.zippopotam.us/us/${zip}`);
         if (zpRes.ok) {
@@ -1347,21 +1569,13 @@
         if (seenNames.has(key)) return;
         seenNames.add(key);
 
-        const distMiles = (
-          turf.distance(turf.point([centerLon, centerLat]), turf.point([lon, lat]), { units: "miles" })
-        ).toFixed(1);
-
+        const distMiles = turf.distance(turf.point([centerLon, centerLat]), turf.point([lon, lat]), { units: "miles" }).toFixed(1);
         const city = el.tags?.["addr:city"] || zipCity;
         const state = el.tags?.["addr:state"] || zipState;
         const postcode = el.tags?.["addr:postcode"] || zip;
 
         results.push({
-          name,
-          city,
-          state,
-          postcode,
-          lat,
-          lon,
+          name, city, state, postcode, lat, lon,
           distMiles: parseFloat(distMiles),
           badge: `${distMiles} mi from ${zip}`
         });
@@ -1373,7 +1587,6 @@
 
     async function searchCoursesByName(query) {
       const golfQuery = /golf|country club|links|cc|gc/i.test(query) ? query : `${query} golf`;
-
       const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(golfQuery)}&addressdetails=1&extratags=1&limit=12`;
       const res = await fetch(url);
       let data = await res.json();
@@ -1383,33 +1596,17 @@
         const rawRes = await fetch(rawUrl);
         data = await rawRes.json();
       }
-
       if (!data || data.length === 0) return [];
 
       return data.map((item) => {
         const addr = item.address || {};
-        const name =
-          item.name ||
-          addr.golf_course ||
-          addr.leisure ||
-          item.display_name.split(",")[0];
-        const city =
-          addr.city ||
-          addr.town ||
-          addr.village ||
-          addr.municipality ||
-          addr.hamlet ||
-          addr.county ||
-          "";
-        const state = addr.state || addr.region || addr.country || "";
+        const name = item.name || addr.golf_course || addr.leisure || item.display_name.split(",")[0];
+        const city = addr.city || addr.town || addr.village || addr.municipality || addr.county || "";
+        const state = addr.state || addr.region || "";
         const postcode = addr.postcode || "";
         const isGolf = item.type === "golf_course" || item.class === "leisure" || /golf|club|links/i.test(name);
-
         return {
-          name,
-          city,
-          state,
-          postcode,
+          name, city, state, postcode,
           lat: parseFloat(item.lat),
           lon: parseFloat(item.lon),
           badge: isGolf ? "Golf Course" : item.type || "Location"
@@ -1417,13 +1614,9 @@
       });
     }
 
-    function renderCourseDropdown(courses, query, isZip) {
+    function renderCourseDropdown(courses, query) {
       if (!courses || courses.length === 0) {
-        resultsDropdown.innerHTML = `
-          <div class="px-3.5 py-3 text-xs text-slate-400">
-            No golf courses found for "<strong>${query}</strong>". Try a 5-digit zip code or add a city/state.
-          </div>
-        `;
+        resultsDropdown.innerHTML = `<div class="px-3.5 py-3 text-xs text-slate-400">No golf courses found for "<strong>${query}</strong>".</div>`;
         return;
       }
 
@@ -1431,25 +1624,16 @@
         .map((c, idx) => {
           const locationParts = [c.city, c.state].filter(Boolean).join(", ");
           const zipDisplay = c.postcode ? `<span class="text-slate-400 font-mono-code">${c.postcode}</span>` : "";
-
           return `
-            <button
-              type="button"
-              data-idx="${idx}"
-              class="course-result-item w-full text-left px-3.5 py-2.5 hover:bg-slate-800/90 transition flex items-center justify-between gap-3 group"
-            >
+            <button type="button" data-idx="${idx}" class="course-result-item w-full text-left px-3.5 py-2.5 hover:bg-slate-800/90 transition flex items-center justify-between gap-3 group">
               <div class="min-w-0">
-                <div class="text-xs font-semibold text-white group-hover:text-emerald-400 truncate">
-                  ${c.name}
-                </div>
+                <div class="text-xs font-semibold text-white group-hover:text-emerald-400 truncate">${c.name}</div>
                 <div class="text-[11px] text-slate-400 truncate flex items-center gap-1.5 mt-0.5">
-                  <span>${locationParts || "Coordinates: " + c.lat.toFixed(4) + ", " + c.lon.toFixed(4)}</span>
+                  <span>${locationParts || "Coords: " + c.lat.toFixed(4) + ", " + c.lon.toFixed(4)}</span>
                   ${zipDisplay ? `<span>•</span>${zipDisplay}` : ""}
                 </div>
               </div>
-              <span class="shrink-0 text-[10px] font-mono-code px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-                ${c.badge}
-              </span>
+              <span class="shrink-0 text-[10px] font-mono-code px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">${c.badge}</span>
             </button>
           `;
         })
@@ -1460,51 +1644,129 @@
           const chosen = courses[parseInt(btn.dataset.idx, 10)];
           if (!chosen) return;
 
-          searchInput.value = `${chosen.name}${chosen.city ? " — " + chosen.city : ""}${chosen.state ? ", " + chosen.state : ""}`;
-          document.getElementById("meta-course-name").value = chosen.name.replace(/Golf Course|Golf Club|Country Club|GC|CC/gi, "").trim() || chosen.name;
+          searchInput.value = `${chosen.name}${chosen.city ? " — " + chosen.city : ""}`;
+          const cleanCourseName = chosen.name.replace(/Golf Course|Golf Club|Country Club|GC|CC/gi, "").trim() || chosen.name;
+          document.getElementById("meta-course-name").value = cleanCourseName;
           resultsDropdown.classList.add("hidden");
 
           selectedFeatureId = null;
           document.getElementById("feature-inspector").classList.add("hidden");
           document.getElementById("preset-select").value = "empty";
-          holeData.features = [];
-          holeData.lidarGrid = null;
 
           map.setView([chosen.lat, chosen.lon], 16);
-          syncMapFromState(false);
-
-          // Automatically scan the selected course for all mapped holes (1-18) so the Hole Dropdown populates!
-          await scanCourseHolesFromOverpass(chosen.lat, chosen.lon, chosen.name);
+          await cacheAll18HolesFromOverpass(chosen.lat, chosen.lon, cleanCourseName);
         });
       });
     }
 
-    async function scanCourseHolesFromOverpass(lat, lon, courseName) {
-      setStatus(`Scanning OpenStreetMap for mapped holes at ${courseName}...`);
-      showToast(`Loading ${courseName} holes from OSM...`);
+    // Downloads & caches all 18 holes of a course in ONE Overpass call and pre-populates courseHolesStore[1..18]
+    async function cacheAll18HolesFromOverpass(lat, lon, courseName) {
+      setStatus(`Downloading & caching full 18-hole OSM data for ${courseName}...`);
+      showToast(`Caching all holes for ${courseName}...`);
 
-      const query = `[out:json][timeout:25];(way["golf"~"hole|green|fairway|bunker|water_hazard|lateral_water_hazard|tee"](around:1600,${lat},${lon});node["natural"="tree"](around:1600,${lat},${lon});way["natural"="water"](around:1600,${lat},${lon}););out geom;`;
+      const query = `[out:json][timeout:30];(way["golf"~"hole|green|fairway|bunker|water_hazard|lateral_water_hazard|tee"](around:1800,${lat},${lon});node["natural"="tree"](around:1800,${lat},${lon});way["natural"="water"](around:1800,${lat},${lon}););out geom;`;
       const osm = await fetchOverpassWithFallback(query);
       if (!osm || !osm.elements) {
-        courseHoleSelect.classList.add("hidden");
-        setStatus(`Viewing ${courseName}. Zoom into any single hole and click 'Pull OSM Hole' or trace manually.`);
+        showToast("Overpass busy — zoom to a hole and click 'Pull OSM' or trace manually.");
         return;
       }
 
       const parsed = parseOverpassElements(osm.elements);
       cachedCourseOSM = parsed;
+      courseHolesStore = {};
 
+      // If OSM has explicit golf=hole ways, build all 18 holes into courseHolesStore automatically!
       if (parsed.holes.length > 0) {
-        courseHoleSelect.classList.remove("hidden");
-        courseHoleSelect.innerHTML = parsed.holes
-          .map((h, i) => `<option value="${i}">Hole ${h.ref || i + 1} (Par ${h.par || 4})</option>`)
-          .join("");
-        loadHoleFromCourseCache(0);
+        parsed.holes.forEach((holeWay, idx) => {
+          const hNum = parseInt(holeWay.ref, 10) || idx + 1;
+          const hPar = parseInt(holeWay.par, 10) || 4;
+          const builtFeatures = buildIsolatedHoleFeatures(holeWay.coords, parsed);
+          courseHolesStore[hNum] = {
+            meta: { holeNumber: hNum, par: hPar, greenSlopeDir: 215, greenSlopePct: 2.8, courseName },
+            lidarGrid: null,
+            features: builtFeatures
+          };
+        });
+        refreshHoleDropdownBadges();
+        const firstHole = parseInt(parsed.holes[0].ref, 10) || 1;
+        switchToHoleNumber(firstHole);
+        showToast(`Cached ${parsed.holes.length} holes for ${courseName} locally! Use the Hole 1–18 dropdown.`);
+      } else if (parsed.greens.length > 0) {
+        // Fallback when course only has unnumbered greens/fairways in OSM: assign each green to a hole slot
+        parsed.greens.slice(0, 18).forEach((g, idx) => {
+          const hNum = idx + 1;
+          const teeCoord = turf.destination(turf.point(g.center), 355 * YARD_TO_M, 180, { units: "meters" }).geometry.coordinates;
+          const builtFeatures = buildIsolatedHoleFeatures([teeCoord, g.center], parsed, g);
+          courseHolesStore[hNum] = {
+            meta: { holeNumber: hNum, par: 4, greenSlopeDir: 215, greenSlopePct: 2.8, courseName },
+            lidarGrid: null,
+            features: builtFeatures
+          };
+        });
+        refreshHoleDropdownBadges();
+        switchToHoleNumber(1);
+        showToast(`Cached ${parsed.greens.length} greens for ${courseName}! Select Hole 1–18 above.`);
       } else {
-        courseHoleSelect.classList.add("hidden");
-        showToast(`Flew to ${courseName}. Center any hole on screen and click 'Pull OSM Hole' or trace!`);
-        setStatus(`Viewing ${courseName}. Center any hole on screen and click 'Pull OSM Hole' or trace manually.`);
+        showToast(`No OSM vectors mapped at ${courseName} yet — trace directly on the satellite map!`);
       }
+    }
+
+    function buildIsolatedHoleFeatures(centerlineCoords, parsedOSM, forcedGreen = null) {
+      const chosenTeeCoord = centerlineCoords[0];
+      let activeGreenCenter = centerlineCoords[centerlineCoords.length - 1];
+      const newFeatures = [];
+
+      let primaryGreen = forcedGreen;
+      if (!primaryGreen && parsedOSM.greens.length > 0) {
+        const sortedGreens = [...parsedOSM.greens].sort(
+          (a, b) =>
+            turf.distance(turf.point(activeGreenCenter), turf.point(a.center)) -
+            turf.distance(turf.point(activeGreenCenter), turf.point(b.center))
+        );
+        if (turf.distance(turf.point(activeGreenCenter), turf.point(sortedGreens[0].center), { units: "meters" }) < 95) {
+          primaryGreen = sortedGreens[0];
+        }
+      }
+
+      if (primaryGreen) {
+        activeGreenCenter = primaryGreen.center;
+        newFeatures.push({
+          id: primaryGreen.id,
+          type: "green",
+          coords: primaryGreen.coords,
+          props: { ...(primaryGreen.props || {}) }
+        });
+      }
+
+      newFeatures.push({
+        id: `osm-tee-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        type: "tee",
+        coords: chosenTeeCoord,
+        props: { label: "Back Tee", elev: 0 }
+      });
+
+      newFeatures.push({
+        id: `osm-cl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        type: "centerline",
+        coords: centerlineCoords,
+        props: {}
+      });
+
+      const holeSpineLine = turf.lineString(centerlineCoords);
+      parsedOSM.features.forEach((feat) => {
+        const distToSpineYds = turf.pointToLineDistance(turf.point(feat.center), holeSpineLine, { units: "meters" }) * M_TO_YARD;
+        const maxCorridor = feat.type === "water" ? 85 : feat.type === "fairway" ? 50 : 60;
+        if (distToSpineYds <= maxCorridor) {
+          newFeatures.push({
+            id: feat.id,
+            type: feat.type,
+            coords: feat.coords,
+            props: { ...(feat.props || {}) }
+          });
+        }
+      });
+
+      return newFeatures;
     }
 
     function parseOverpassElements(elements) {
@@ -1520,7 +1782,6 @@
 
       elements.forEach((el) => {
         if (el.type === "way" && el.tags) {
-          // Support both `out geom;` and `out body;>;out skel qt;`
           const rawCoords = el.geometry
             ? el.geometry.map((pt) => [pt.lon, pt.lat])
             : (el.nodes || []).map((nid) => nodes[nid]).filter(Boolean);
@@ -1547,7 +1808,6 @@
           }
           if (coords.length < 4) return;
 
-          // Apply subtle Chaikin smoothing to coarse OSM polygons (< 25 vertices)
           if (coords.length < 25 && (gType === "green" || gType === "bunker")) {
             coords = smoothPolygonCoords(coords, 1);
           }
@@ -1581,79 +1841,45 @@
       return { holes: candidateHoles, greens: candidateGreens, tees: candidateTees, features: candidateFeatures };
     }
 
-    courseHoleSelect.addEventListener("change", (e) => {
-      const idx = parseInt(e.target.value, 10);
-      if (!isNaN(idx)) loadHoleFromCourseCache(idx);
-    });
+    // Switch between Holes 1..18 while preserving edits in courseHolesStore
+    function switchToHoleNumber(targetHoleNum) {
+      // Save current hole first
+      saveStateToLocalStorage();
 
-    function loadHoleFromCourseCache(idx) {
-      if (!cachedCourseOSM || !cachedCourseOSM.holes[idx]) return;
-      const holeWay = cachedCourseOSM.holes[idx];
-      const centerlineCoords = holeWay.coords;
-      const chosenTeeCoord = centerlineCoords[0];
-      let activeGreenCenter = centerlineCoords[centerlineCoords.length - 1];
+      const hNum = Math.max(1, Math.min(18, parseInt(targetHoleNum, 10) || 1));
+      document.getElementById("meta-hole-num").value = hNum;
+      courseHoleSelect.value = String(hNum);
 
-      const holeNum = parseInt(holeWay.ref, 10) || idx + 1;
-      const holePar = parseInt(holeWay.par, 10) || 4;
-      document.getElementById("meta-hole-num").value = holeNum;
-      document.getElementById("meta-hole-par").value = holePar;
-
-      const newFeatures = [];
-
-      if (cachedCourseOSM.greens.length > 0) {
-        const sortedGreens = [...cachedCourseOSM.greens].sort(
-          (a, b) =>
-            turf.distance(turf.point(activeGreenCenter), turf.point(a.center)) -
-            turf.distance(turf.point(activeGreenCenter), turf.point(b.center))
-        );
-        if (turf.distance(turf.point(activeGreenCenter), turf.point(sortedGreens[0].center), { units: "meters" }) < 90) {
-          activeGreenCenter = sortedGreens[0].center;
-          newFeatures.push({
-            id: sortedGreens[0].id,
-            type: "green",
-            coords: sortedGreens[0].coords,
-            props: sortedGreens[0].props
-          });
-        }
+      if (courseHolesStore[hNum] && courseHolesStore[hNum].features && courseHolesStore[hNum].features.length > 0) {
+        holeData = JSON.parse(JSON.stringify(courseHolesStore[hNum]));
+        document.getElementById("meta-hole-par").value = holeData.meta?.par || 4;
+        document.getElementById("meta-green-slope-dir").value = holeData.meta?.greenSlopeDir || 215;
+        document.getElementById("meta-green-slope-pct").value = holeData.meta?.greenSlopePct || 2.8;
+        syncMapFromState(true);
+        showToast(`Switched to Hole ${hNum}`);
+      } else {
+        // Initialize an empty slot for this hole
+        holeData = {
+          meta: {
+            holeNumber: hNum,
+            par: 4,
+            greenSlopeDir: 215,
+            greenSlopePct: 2.8,
+            courseName: document.getElementById("meta-course-name").value || "Lakeview"
+          },
+          lidarGrid: null,
+          features: []
+        };
+        syncMapFromState(false);
+        showToast(`Hole ${hNum} is empty — zoom to Hole ${hNum} on map and click 'Pull OSM' or trace!`);
       }
-
-      newFeatures.push({
-        id: `osm-tee-${holeNum}`,
-        type: "tee",
-        coords: chosenTeeCoord,
-        props: { label: "Back Tee", elev: 0 }
-      });
-
-      newFeatures.push({
-        id: `osm-centerline-${holeNum}`,
-        type: "centerline",
-        coords: centerlineCoords,
-        props: {}
-      });
-
-      const holeSpineLine = turf.lineString(centerlineCoords);
-      cachedCourseOSM.features.forEach((feat) => {
-        const distToSpineYds = turf.pointToLineDistance(turf.point(feat.center), holeSpineLine, { units: "meters" }) * M_TO_YARD;
-        const maxCorridor = feat.type === "water" ? 95 : feat.type === "fairway" ? 55 : 65;
-        if (distToSpineYds <= maxCorridor) {
-          newFeatures.push({
-            id: feat.id,
-            type: feat.type,
-            coords: feat.coords,
-            props: { ...(feat.props || {}) }
-          });
-        }
-      });
-
-      document.getElementById("preset-select").value = "empty";
-      holeData.features = newFeatures;
-      holeData.lidarGrid = null;
-      syncMapFromState(true);
-      showToast(`Loaded Hole ${holeNum} (Par ${holePar}) — Click 'Fetch USGS LiDAR' for real green slopes!`);
-      setStatus(`Hole ${holeNum} loaded (${newFeatures.length} vectors). Click 'Fetch USGS LiDAR' to compute real 3DEP slopes.`);
     }
 
-    // D. Multi-Mirror Single-Hole Overpass OSM Vector Importer
+    courseHoleSelect.addEventListener("change", (e) => {
+      switchToHoleNumber(parseInt(e.target.value, 10));
+    });
+
+    // Pull OSM Button: If course isn't cached yet, caches entire course around view; otherwise pulls the hole in center of screen into current hole slot
     document.getElementById("osm-import-btn").addEventListener("click", async () => {
       const b = map.getBounds();
       const bbox = `${b.getSouth()},${b.getWest()},${b.getNorth()},${b.getEast()}`;
@@ -1664,14 +1890,35 @@
       const osm = await fetchOverpassWithFallback(query);
 
       if (!osm || !osm.elements) {
-        showToast("Overpass API busy or blocked. Try zooming in closer to 1 hole.");
-        setStatus("Overpass failed — zoom into a single hole and try again, or trace manually.");
+        showToast("Overpass API busy. Try zooming in closer.");
         return;
       }
 
       const parsed = parseOverpassElements(osm.elements);
       const mapCenterPt = turf.point([map.getCenter().lng, map.getCenter().lat]);
 
+      if (parsed.greens.length === 0 && parsed.features.length === 0 && parsed.holes.length === 0) {
+        showToast("No OSM golf polygons mapped here yet — use the left toolbar to trace!");
+        return;
+      }
+
+      // If multiple holes were in view and courseHolesStore is mostly empty, cache all of them into their slots!
+      if (parsed.holes.length > 1) {
+        cachedCourseOSM = parsed;
+        const cName = document.getElementById("meta-course-name").value || "Course";
+        parsed.holes.forEach((hw, idx) => {
+          const hN = parseInt(hw.ref, 10) || idx + 1;
+          if (!courseHolesStore[hN] || !courseHolesStore[hN].features || courseHolesStore[hN].features.length === 0) {
+            courseHolesStore[hN] = {
+              meta: { holeNumber: hN, par: parseInt(hw.par, 10) || 4, greenSlopeDir: 215, greenSlopePct: 2.8, courseName: cName },
+              lidarGrid: null,
+              features: buildIsolatedHoleFeatures(hw.coords, parsed)
+            };
+          }
+        });
+      }
+
+      // Isolate the single hole closest to the center of the current screen
       const candidateHoles = parsed.holes.map((h) => ({
         ...h,
         distFromScreenCenter: turf.pointToLineDistance(mapCenterPt, turf.lineString(h.coords), { units: "meters" }) * M_TO_YARD
@@ -1680,138 +1927,64 @@
         ...g,
         distFromScreenCenter: turf.distance(mapCenterPt, turf.point(g.center), { units: "meters" }) * M_TO_YARD
       }));
-      const candidateFeatures = parsed.features;
-
-      if (candidateGreens.length === 0 && candidateFeatures.length === 0 && candidateHoles.length === 0) {
-        showToast("No OSM golf polygons mapped here yet — use the left toolbar to trace!");
-        setStatus("No OSM tags found in view. Click 'Trace Green' & 'Trace Fairway' on the left.");
-        return;
-      }
-
-      const newFeatures = [];
-      let chosenTeeCoord = null;
-      let activeGreenCenter = null;
-      let centerlineCoords = null;
 
       candidateHoles.sort((a, b) => a.distFromScreenCenter - b.distFromScreenCenter);
+      candidateGreens.sort((a, b) => a.distFromScreenCenter - b.distFromScreenCenter);
+
+      let centerlineCoords = null;
+      let forcedGreen = null;
+
       if (candidateHoles.length > 0 && candidateHoles[0].distFromScreenCenter < 180) {
-        const bestHoleWay = candidateHoles[0];
-        centerlineCoords = bestHoleWay.coords;
-        chosenTeeCoord = centerlineCoords[0];
-        activeGreenCenter = centerlineCoords[centerlineCoords.length - 1];
-
-        if (bestHoleWay.ref) {
-          const parsedNum = parseInt(bestHoleWay.ref, 10);
-          if (!isNaN(parsedNum)) document.getElementById("meta-hole-num").value = parsedNum;
+        const bestHole = candidateHoles[0];
+        centerlineCoords = bestHole.coords;
+        if (bestHole.ref && !isNaN(parseInt(bestHole.ref, 10))) {
+          document.getElementById("meta-hole-num").value = parseInt(bestHole.ref, 10);
+          courseHoleSelect.value = String(parseInt(bestHole.ref, 10));
         }
-        if (bestHoleWay.par) {
-          const parsedPar = parseInt(bestHoleWay.par, 10);
-          if (!isNaN(parsedPar)) document.getElementById("meta-hole-par").value = parsedPar;
+        if (bestHole.par && !isNaN(parseInt(bestHole.par, 10))) {
+          document.getElementById("meta-hole-par").value = parseInt(bestHole.par, 10);
         }
-      }
-
-      if (candidateGreens.length > 0) {
-        if (activeGreenCenter) {
-          candidateGreens.sort(
-            (a, b) =>
-              turf.distance(turf.point(activeGreenCenter), turf.point(a.center)) -
-              turf.distance(turf.point(activeGreenCenter), turf.point(b.center))
-          );
-        } else {
-          candidateGreens.sort((a, b) => a.distFromScreenCenter - b.distFromScreenCenter);
-        }
-        const primaryGreen = candidateGreens[0];
-        activeGreenCenter = primaryGreen.center;
-        newFeatures.push({
-          id: primaryGreen.id,
-          type: "green",
-          coords: primaryGreen.coords,
-          props: primaryGreen.props
-        });
-      }
-
-      if (!activeGreenCenter) {
-        activeGreenCenter = [map.getCenter().lng, map.getCenter().lat];
-      }
-
-      let primaryFairway = null;
-      let minFwDist = Infinity;
-      candidateFeatures
-        .filter((f) => f.type === "fairway")
-        .forEach((fw) => {
+      } else if (candidateGreens.length > 0) {
+        forcedGreen = candidateGreens[0];
+        const activeGreenCenter = forcedGreen.center;
+        // Find matching fairway
+        let primaryFairway = null, minFwDist = Infinity;
+        parsed.features.filter((f) => f.type === "fairway").forEach((fw) => {
           fw.coords.forEach((c) => {
             const d = turf.distance(turf.point(activeGreenCenter), turf.point(c), { units: "meters" }) * M_TO_YARD;
-            if (d < minFwDist) {
-              minFwDist = d;
-              primaryFairway = fw;
-            }
+            if (d < minFwDist) { minFwDist = d; primaryFairway = fw; }
           });
         });
 
-      if (!chosenTeeCoord) {
         if (primaryFairway && minFwDist < 90) {
-          let maxDistFromGreen = -Infinity;
-          let farFairwayPt = primaryFairway.center;
+          let maxD = -Infinity, farPt = primaryFairway.center;
           primaryFairway.coords.forEach((c) => {
             const d = turf.distance(turf.point(activeGreenCenter), turf.point(c), { units: "meters" }) * M_TO_YARD;
-            if (d > maxDistFromGreen) {
-              maxDistFromGreen = d;
-              farFairwayPt = c;
-            }
+            if (d > maxD) { maxD = d; farPt = c; }
           });
-          const brg = turf.bearing(turf.point(activeGreenCenter), turf.point(farFairwayPt));
-          chosenTeeCoord = turf.destination(turf.point(farFairwayPt), 38 * YARD_TO_M, brg, { units: "meters" }).geometry.coordinates;
-          centerlineCoords = [chosenTeeCoord, primaryFairway.center, activeGreenCenter];
+          const brg = turf.bearing(turf.point(activeGreenCenter), turf.point(farPt));
+          const teeCoord = turf.destination(turf.point(farPt), 38 * YARD_TO_M, brg, { units: "meters" }).geometry.coordinates;
+          centerlineCoords = [teeCoord, primaryFairway.center, activeGreenCenter];
         } else {
-          chosenTeeCoord = turf.destination(turf.point(activeGreenCenter), 360 * YARD_TO_M, 180, { units: "meters" }).geometry.coordinates;
-          centerlineCoords = [chosenTeeCoord, activeGreenCenter];
+          const teeCoord = turf.destination(turf.point(activeGreenCenter), 360 * YARD_TO_M, 180, { units: "meters" }).geometry.coordinates;
+          centerlineCoords = [teeCoord, activeGreenCenter];
         }
       }
 
-      newFeatures.push({
-        id: "osm-tee-main",
-        type: "tee",
-        coords: chosenTeeCoord,
-        props: { label: "Back Tee", elev: 0 }
-      });
-
-      newFeatures.push({
-        id: "osm-centerline-main",
-        type: "centerline",
-        coords: centerlineCoords,
-        props: {}
-      });
-
-      const holeSpineLine = turf.lineString(centerlineCoords);
-
-      candidateFeatures.forEach((feat) => {
-        const pt = turf.point(feat.center);
-        const distToSpineYds = turf.pointToLineDistance(pt, holeSpineLine, { units: "meters" }) * M_TO_YARD;
-        const maxCorridor = feat.type === "water" ? 95 : feat.type === "fairway" ? 55 : 65;
-
-        if (distToSpineYds <= maxCorridor) {
-          newFeatures.push({
-            id: feat.id,
-            type: feat.type,
-            coords: feat.coords,
-            props: feat.props
-          });
-        }
-      });
-
-      document.getElementById("preset-select").value = "empty";
-      holeData.features = newFeatures;
-      holeData.lidarGrid = null;
-      syncMapFromState(true);
-      showToast(`Imported Hole from OSM (${newFeatures.length} features)!`);
-      setStatus(`Loaded ${newFeatures.length} single-hole OSM vectors. Click 'Fetch USGS LiDAR' or drag vertices.`);
+      if (centerlineCoords) {
+        document.getElementById("preset-select").value = "empty";
+        holeData.features = buildIsolatedHoleFeatures(centerlineCoords, parsed, forcedGreen);
+        holeData.lidarGrid = null;
+        syncMapFromState(true);
+        showToast(`Pulled & saved Hole ${document.getElementById("meta-hole-num").value} (${holeData.features.length} vectors)!`);
+      }
     });
 
     /********************************************************************
-     * 5B. REAL USGS 3DEP LIDAR ELEVATION & GRADIENT ENGINE
-     *     Queries https://epqs.nationalmap.gov/v1/json across a tight
-     *     green-only grid (fixing the Hole 2 timeout in dem_processor.py)
-     *     and computes exact 2D central-difference slope % & aspect!
+     * 5B. DENSE 2-YARD USGS 3DEP LIDAR ENGINE + MARCHING SQUARES CONTOURS
+     *     Samples a 9x9 anchor matrix via USGS 3DEP and bicubic/bilinearly
+     *     upsamples + Gaussian-smooths it to a dense 2-yard USGA grid
+     *     (120–160 arrows) + 0.5ft contour lines!
      ********************************************************************/
     async function queryUSGSElevationFeet(lng, lat) {
       const url = `https://epqs.nationalmap.gov/v1/json?x=${lng.toFixed(6)}&y=${lat.toFixed(6)}&wkid=4326&units=Feet&includeDate=false`;
@@ -1822,6 +1995,159 @@
       return isNaN(val) ? null : val;
     }
 
+    // Build dense 2-yard green grid & 0.5ft contours from an anchor elevation matrix Z_raw
+    function computeDenseGreenLidarField(Z_anchor, anchorCols, anchorRows, minX, maxX, minY, maxY, greenCenterElevFt, model, greenPoly, fringePoly, useApproachFrame = false) {
+      // Interpolate to a dense 2.0-yard spacing grid (just like step=2 in plotter.py!)
+      const stepYds = 2.0;
+      const denseCols = Math.max(10, Math.round((maxX - minX) / stepYds) + 1);
+      const denseRows = Math.max(10, Math.round((maxY - minY) / stepYds) + 1);
+      const dxYds = (maxX - minX) / (denseCols - 1);
+      const dyYds = (maxY - minY) / (denseRows - 1);
+
+      // Bilinear interpolation from anchor grid
+      let Z = Array.from({ length: denseRows }, () => Array(denseCols).fill(0));
+      for (let r = 0; r < denseRows; r++) {
+        const v = (r / (denseRows - 1)) * (anchorRows - 1);
+        const r0 = Math.floor(v), r1 = Math.min(anchorRows - 1, r0 + 1);
+        const fv = v - r0;
+        for (let c = 0; c < denseCols; c++) {
+          const u = (c / (denseCols - 1)) * (anchorCols - 1);
+          const c0 = Math.floor(u), c1 = Math.min(anchorCols - 1, c0 + 1);
+          const fu = u - c0;
+          const z00 = Z_anchor[r0][c0] ?? greenCenterElevFt;
+          const z10 = Z_anchor[r0][c1] ?? greenCenterElevFt;
+          const z01 = Z_anchor[r1][c0] ?? greenCenterElevFt;
+          const z11 = Z_anchor[r1][c1] ?? greenCenterElevFt;
+          Z[r][c] = (1 - fv) * ((1 - fu) * z00 + fu * z10) + fv * ((1 - fu) * z01 + fu * z11);
+        }
+      }
+
+      // Apply 3x3 Gaussian smoothing kernel (matches gaussian_filter(Z_meters, sigma=0.5) in dem_processor.py)
+      const Z_smooth = Array.from({ length: denseRows }, () => Array(denseCols).fill(0));
+      for (let r = 0; r < denseRows; r++) {
+        for (let c = 0; c < denseCols; c++) {
+          let sum = 0, wSum = 0;
+          for (let dr = -1; dr <= 1; dr++) {
+            for (let dc = -1; dc <= 1; dc++) {
+              const nr = Math.min(denseRows - 1, Math.max(0, r + dr));
+              const nc = Math.min(denseCols - 1, Math.max(0, c + dc));
+              const w = (dr === 0 && dc === 0) ? 4 : (dr === 0 || dc === 0) ? 2 : 1;
+              sum += Z[nr][nc] * w;
+              wSum += w;
+            }
+          }
+          Z_smooth[r][c] = sum / wSum - greenCenterElevFt; // Relative to green centroid in feet!
+        }
+      }
+
+      // Compute 2D Central-Difference Gradients (dz/dx and dz/dy in Feet/Feet -> Slope %)
+      const dxFeet = dxYds * 3.0;
+      const dyFeet = dyYds * 3.0;
+      const arrows = [];
+      let sumSlope = 0, sumSin = 0, sumCos = 0, countGreen = 0;
+
+      for (let r = 0; r < denseRows; r++) {
+        for (let c = 0; c < denseCols; c++) {
+          const zC = Z_smooth[r][c];
+          const cL = Math.max(0, c - 1), cR = Math.min(denseCols - 1, c + 1);
+          const rB = Math.max(0, r - 1), rT = Math.min(denseRows - 1, r + 1);
+
+          const gx = (Z_smooth[r][cR] - Z_smooth[r][cL]) / ((cR - cL || 1) * dxFeet);
+          const gy = (Z_smooth[rT][c] - Z_smooth[rB][c]) / ((rT - rB || 1) * dyFeet);
+
+          const slopePct = Math.hypot(gx, gy) * 100.0;
+          if (slopePct < 0.35) continue; // Filter flat noise (< 0.35%)
+
+          // Downhill vector is negative gradient (-gx, -gy)
+          const downX = -gx;
+          const downY = -gy;
+          // Angle in clockwise degrees where 0 deg = Up (+Y), 90 deg = Right (+X), 180 deg = Down (-Y)
+          const svgAngleDeg = ((Math.atan2(downX, downY) * 180) / Math.PI + 360) % 360;
+
+          const xYds = minX + c * dxYds;
+          const yYds = minY + r * dyYds;
+          const lngLat = localYardsToLngLat(model.teeCoord, xYds, yYds, model.holeBearingDeg);
+          const ptTurf = turf.point(lngLat);
+          const inGreen = turf.booleanPointInPolygon(ptTurf, greenPoly);
+          const inFringe = !inGreen && turf.booleanPointInPolygon(ptTurf, fringePoly);
+
+          if (inGreen || inFringe) {
+            if (inGreen) {
+              sumSlope += slopePct;
+              sumSin += Math.sin((svgAngleDeg * Math.PI) / 180);
+              sumCos += Math.cos((svgAngleDeg * Math.PI) / 180);
+              countGreen++;
+            }
+            arrows.push({
+              r, c, xYds, yYds, lngLat,
+              slopePct,
+              svgAngleDeg,
+              inFringe,
+              zRelFt: zC
+            });
+          }
+        }
+      }
+
+      // Extract 0.5-ft Contour Isolines via Marching Squares (matches levels = np.arange(min_z, max_z + 0.5, 0.5) in plotter.py)
+      const contourSegments = [];
+      let minZ = Infinity, maxZ = -Infinity;
+      for (let r = 0; r < denseRows; r++) {
+        for (let c = 0; c < denseCols; c++) {
+          if (Z_smooth[r][c] < minZ) minZ = Z_smooth[r][c];
+          if (Z_smooth[r][c] > maxZ) maxZ = Z_smooth[r][c];
+        }
+      }
+
+      const startLevel = Math.floor(minZ * 2) / 2;
+      const endLevel = Math.ceil(maxZ * 2) / 2;
+
+      for (let level = startLevel; level <= endLevel; level += 0.5) {
+        const levelSegs = [];
+        for (let r = 0; r < denseRows - 1; r++) {
+          for (let c = 0; c < denseCols - 1; c++) {
+            const x0 = minX + c * dxYds, x1 = minX + (c + 1) * dxYds;
+            const y0 = minY + r * dyYds, y1 = minY + (r + 1) * dyYds;
+            // Check if cell center is inside green
+            const cellLngLat = localYardsToLngLat(model.teeCoord, (x0 + x1) / 2, (y0 + y1) / 2, model.holeBearingDeg);
+            if (!turf.booleanPointInPolygon(turf.point(cellLngLat), greenPoly)) continue;
+
+            const z00 = Z_smooth[r][c], z10 = Z_smooth[r][c + 1];
+            const z11 = Z_smooth[r + 1][c + 1], z01 = Z_smooth[r + 1][c];
+
+            const crossings = [];
+            if ((z00 < level) !== (z10 < level)) {
+              const t = (level - z00) / (z10 - z00 || 1e-6);
+              crossings.push({ x: x0 + t * (x1 - x0), y: y0 });
+            }
+            if ((z10 < level) !== (z11 < level)) {
+              const t = (level - z10) / (z11 - z10 || 1e-6);
+              crossings.push({ x: x1, y: y0 + t * (y1 - y0) });
+            }
+            if ((z11 < level) !== (z01 < level)) {
+              const t = (level - z01) / (z11 - z01 || 1e-6);
+              crossings.push({ x: x0 + t * (x1 - x0), y: y1 });
+            }
+            if ((z01 < level) !== (z00 < level)) {
+              const t = (level - z00) / (z01 - z00 || 1e-6);
+              crossings.push({ x: x0, y: y0 + t * (y1 - y0) });
+            }
+            if (crossings.length >= 2) {
+              levelSegs.push({ p1: crossings[0], p2: crossings[1], level });
+            }
+          }
+        }
+        if (levelSegs.length > 0) {
+          contourSegments.push({ level, segments: levelSegs });
+        }
+      }
+
+      const avgSlope = (sumSlope / (countGreen || 1)).toFixed(1);
+      const avgFallDeg = Math.round(((Math.atan2(sumSin, sumCos) * 180) / Math.PI + 360) % 360);
+
+      return { arrows, contourSegments, greenCenterElevFt, avgSlope, avgFallDeg };
+    }
+
     document.getElementById("lidar-fetch-btn").addEventListener("click", async () => {
       const greenFeat = holeData.features.find((f) => f.type === "green");
       if (!greenFeat || greenFeat.coords.length < 4) {
@@ -1830,16 +2156,16 @@
       }
 
       const btnText = document.getElementById("lidar-btn-text");
-      btnText.textContent = "Scanning LiDAR...";
-      setStatus("Querying USGS 3DEP 1-Meter LiDAR Elevation Service for Green Grid & Fairway Targets...");
-      showToast("Sampling USGS 3DEP 1-Meter LiDAR...");
+      btnText.textContent = "Scanning...";
+      setStatus("Sampling USGS 3DEP 1-Meter LiDAR Elevation Service across Green & Fairway Targets...");
+      showToast("Fetching Dense USGS 3DEP LiDAR Grid...");
 
       try {
         const model = computeSpatialHoleModel();
         const greenPoly = turf.polygon([greenFeat.coords]);
-        const fringePoly = turf.buffer(greenPoly, 1.5, { units: "meters" });
+        const fringePoly = turf.buffer(greenPoly, 1.35, { units: "meters" });
 
-        // 1. Query Tee & Green Center elevations to compute real relative target elevations (1 yd per 3 ft rule)
+        // 1. Query Tee & Green Center elevations
         const [teeElevFt, greenCenterElevFt] = await Promise.all([
           queryUSGSElevationFeet(model.teeCoord[0], model.teeCoord[1]),
           queryUSGSElevationFeet(model.greenCentroidCoord[0], model.greenCentroidCoord[1])
@@ -1864,116 +2190,67 @@
           );
         }
 
-        // 2. Sample a 7x7 planar grid in Hole Yards tightly around the Green (avoids full-hole DEM timeouts)
+        // 2. Sample an 8x8 anchor grid over the green and bicubic/bilinearly interpolate + Gaussian filter to a dense 2-yard grid!
         const greenPtsYards = greenFeat.coords.map((c) => model.projectToHoleYards(c));
         const minX = Math.min(...greenPtsYards.map((p) => p.x)) - 2.5;
         const maxX = Math.max(...greenPtsYards.map((p) => p.x)) + 2.5;
         const minY = Math.min(...greenPtsYards.map((p) => p.y)) - 2.5;
         const maxY = Math.max(...greenPtsYards.map((p) => p.y)) + 2.5;
 
-        const cols = 7, rows = 7;
-        const dxYds = (maxX - minX) / (cols - 1);
-        const dyYds = (maxY - minY) / (rows - 1);
+        const anchorCols = 8, anchorRows = 8;
+        const dxAnchor = (maxX - minX) / (anchorCols - 1);
+        const dyAnchor = (maxY - minY) / (anchorRows - 1);
 
         const gridTasks = [];
-        for (let r = 0; r < rows; r++) {
-          for (let c = 0; c < cols; c++) {
-            const xYds = minX + c * dxYds;
-            const yYds = minY + r * dyYds;
+        for (let r = 0; r < anchorRows; r++) {
+          for (let c = 0; c < anchorCols; c++) {
+            const xYds = minX + c * dxAnchor;
+            const yYds = minY + r * dyAnchor;
             const lngLat = localYardsToLngLat(model.teeCoord, xYds, yYds, model.holeBearingDeg);
             gridTasks.push(
-              queryUSGSElevationFeet(lngLat[0], lngLat[1]).then((zFt) => ({ r, c, xYds, yYds, lngLat, zFt }))
+              queryUSGSElevationFeet(lngLat[0], lngLat[1]).then((zFt) => ({ r, c, zFt }))
             );
           }
         }
 
         const samples = await Promise.all(gridTasks);
-        const Z = Array.from({ length: rows }, () => Array(cols).fill(null));
-        samples.forEach((s) => {
-          Z[s.r][s.c] = s.zFt;
-        });
+        const Z_anchor = Array.from({ length: anchorRows }, () => Array(anchorCols).fill(null));
+        samples.forEach((s) => { Z_anchor[s.r][s.c] = s.zFt; });
 
-        // 3. Compute 2D Central Differences (dz/dx and dz/dy in Feet/Feet -> Slope % and Downhill Vector)
-        const dxFeet = dxYds * 3.0;
-        const dyFeet = dyYds * 3.0;
-        const arrows = [];
-        let sumSlope = 0, sumSin = 0, sumCos = 0, countGreen = 0;
+        const lidarResult = computeDenseGreenLidarField(
+          Z_anchor, anchorCols, anchorRows, minX, maxX, minY, maxY,
+          greenCenterElevFt || 0, model, greenPoly, fringePoly
+        );
 
-        for (let r = 0; r < rows; r++) {
-          for (let c = 0; c < cols; c++) {
-            const zC = Z[r][c];
-            if (zC === null) continue;
-            const cL = Math.max(0, c - 1), cR = Math.min(cols - 1, c + 1);
-            const rB = Math.max(0, r - 1), rT = Math.min(rows - 1, r + 1);
-            const zL = Z[r][cL] ?? zC, zR = Z[r][cR] ?? zC;
-            const zB = Z[rB][c] ?? zC, zT = Z[rT][c] ?? zC;
-
-            const gx = (zR - zL) / ((cR - cL || 1) * dxFeet);
-            const gy = (zT - zB) / ((rT - rB || 1) * dyFeet);
-
-            const slopePct = Math.hypot(gx, gy) * 100.0;
-            const downX = -gx;
-            const downY = -gy;
-            // In SVG screen space: 0 deg = Up (+Y), 90 deg = Right (+X), 180 deg = Down (-Y)
-            const svgAngleDeg = ((Math.atan2(downX, downY) * 180) / Math.PI + 360) % 360;
-
-            const xYds = minX + c * dxYds;
-            const yYds = minY + r * dyYds;
-            const lngLat = localYardsToLngLat(model.teeCoord, xYds, yYds, model.holeBearingDeg);
-            const ptTurf = turf.point(lngLat);
-            const inGreen = turf.booleanPointInPolygon(ptTurf, greenPoly);
-            const inFringe = !inGreen && turf.booleanPointInPolygon(ptTurf, fringePoly);
-
-            if (inGreen || inFringe) {
-              if (inGreen) {
-                sumSlope += slopePct;
-                sumSin += Math.sin((svgAngleDeg * Math.PI) / 180);
-                sumCos += Math.cos((svgAngleDeg * Math.PI) / 180);
-                countGreen++;
-              }
-              arrows.push({
-                xYds,
-                yYds,
-                slopePct,
-                svgAngleDeg,
-                inFringe,
-                zRelFt: zC - (greenCenterElevFt || zC)
-              });
-            }
-          }
-        }
-
-        if (arrows.length > 0) {
-          holeData.lidarGrid = { arrows, greenCenterElevFt };
-          const avgSlope = (sumSlope / (countGreen || 1)).toFixed(1);
-          const avgFallDeg = Math.round(((Math.atan2(sumSin, sumCos) * 180) / Math.PI + 360) % 360);
-          document.getElementById("meta-green-slope-pct").value = avgSlope;
-          document.getElementById("meta-green-slope-dir").value = avgFallDeg;
+        if (lidarResult.arrows.length > 0) {
+          holeData.lidarGrid = lidarResult;
+          document.getElementById("meta-green-slope-pct").value = lidarResult.avgSlope;
+          document.getElementById("meta-green-slope-dir").value = lidarResult.avgFallDeg;
           syncMapFromState(false);
-          showToast(`Real USGS 3DEP LiDAR Applied! Avg Green Slope: ${avgSlope}% (${avgFallDeg}°)`);
-          setStatus(`USGS 3DEP 1-Meter LiDAR active (${arrows.length} slope vectors + relative target elevations).`);
+          showToast(`USGS 3DEP LiDAR Loaded: ${lidarResult.arrows.length} dense vectors + 0.5ft contours!`);
+          setStatus(`USGS 3DEP 1-Meter LiDAR active (${lidarResult.arrows.length} vectors, Avg Slope ${lidarResult.avgSlope}%).`);
         } else {
           showToast("No USGS 3DEP coverage at this location. Using synthetic model.");
         }
       } catch (err) {
-        console.error("USGS LiDAR fetch error:", err);
+        console.error("USGS LiDAR error:", err);
         showToast("USGS 3DEP API busy — try again in a few seconds.");
       } finally {
-        btnText.textContent = "Fetch USGS LiDAR";
+        btnText.textContent = "Fetch LiDAR";
       }
     });
 
     /********************************************************************
-     * 6. GEODESIC & PLANAR AFFINE ROTATION ENGINE (Turf.js)
+     * 6. DUAL-BEARING SPATIAL MODEL (Tee Bearing + Green Approach Bearing)
+     *    & AUTO 20-YARD FAIRWAY CORRIDOR CUTOUT
      ********************************************************************/
     function computeSpatialHoleModel() {
-      let teeFeat = holeData.features.find((f) => f.type === "tee");
+      const teeFeat = holeData.features.find((f) => f.type === "tee");
       const greenFeat = holeData.features.find((f) => f.type === "green");
       const fwFeat = holeData.features.find((f) => f.type === "fairway");
       const centerFeat = holeData.features.find((f) => f.type === "centerline");
 
       const mapCenter = map.getCenter();
-
       let greenCentroidCoord = null;
       let greenPolyTurf = null;
 
@@ -1991,23 +2268,17 @@
       let teeCoord = teeFeat ? teeFeat.coords : null;
       if (teeCoord) {
         const distCheck = turf.distance(turf.point(teeCoord), turf.point(greenCentroidCoord), { units: "meters" });
-        if (distCheck > 2000 || distCheck < 5) {
-          teeCoord = null;
-        }
+        if (distCheck > 2000 || distCheck < 5) teeCoord = null;
       }
 
       if (!teeCoord) {
         if (centerFeat && centerFeat.coords.length >= 2) {
           teeCoord = centerFeat.coords[0];
         } else if (fwFeat && fwFeat.coords.length >= 4) {
-          let maxD = -1;
-          let farPt = fwFeat.coords[0];
+          let maxD = -1, farPt = fwFeat.coords[0];
           fwFeat.coords.forEach((c) => {
             const d = turf.distance(turf.point(greenCentroidCoord), turf.point(c), { units: "meters" });
-            if (d > maxD) {
-              maxD = d;
-              farPt = c;
-            }
+            if (d > maxD) { maxD = d; farPt = c; }
           });
           const brg = turf.bearing(turf.point(greenCentroidCoord), turf.point(farPt));
           teeCoord = turf.destination(turf.point(farPt), 35 * YARD_TO_M, brg, { units: "meters" }).geometry.coordinates;
@@ -2016,14 +2287,31 @@
         }
       }
 
-      const rawBearing = turf.bearing(turf.point(teeCoord), turf.point(greenCentroidCoord));
-      const holeBearingDeg = (rawBearing + 360) % 360;
+      // 1. Primary Hole Bearing (Tee -> Green Center)
+      const holeBearingDeg = (turf.bearing(turf.point(teeCoord), turf.point(greenCentroidCoord)) + 360) % 360;
 
+      // 2. Green Approach Bearing (From last fairway dogleg pivot -> Green Center, used to orient USGA 1:480 Green view & Top Compass!)
+      let approachOriginCoord = teeCoord;
+      if (centerFeat && centerFeat.coords.length >= 3) {
+        // Pick the penultimate node (the dogleg / approach point in the fairway)
+        for (let i = centerFeat.coords.length - 2; i >= 0; i--) {
+          const dToGreen = turf.distance(turf.point(centerFeat.coords[i]), turf.point(greenCentroidCoord), { units: "meters" }) * M_TO_YARD;
+          if (dToGreen >= 35) {
+            approachOriginCoord = centerFeat.coords[i];
+            break;
+          }
+        }
+      } else if (fwFeat && fwFeat.coords.length >= 4) {
+        approachOriginCoord = turf.centroid(turf.polygon([fwFeat.coords])).geometry.coordinates;
+      }
+      const approachBearingDeg = (turf.bearing(turf.point(approachOriginCoord), turf.point(greenCentroidCoord)) + 360) % 360;
+
+      // 3. Exact Front of Green Intersection Point (along approach line)
       let frontGreenCoord = [...greenCentroidCoord];
       if (greenPolyTurf) {
         const approachLine = centerFeat && centerFeat.coords.length >= 2
           ? turf.lineString(centerFeat.coords)
-          : turf.lineString([teeCoord, greenCentroidCoord]);
+          : turf.lineString([approachOriginCoord, greenCentroidCoord]);
 
         const greenBoundary = turf.polygonToLine(greenPolyTurf);
         const intersections = turf.lineIntersect(approachLine, greenBoundary);
@@ -2031,7 +2319,7 @@
         if (intersections && intersections.features.length > 0) {
           let minDist = Infinity;
           intersections.features.forEach((ptFeat) => {
-            const d = turf.distance(turf.point(teeCoord), ptFeat, { units: "meters" });
+            const d = turf.distance(turf.point(approachOriginCoord), ptFeat, { units: "meters" });
             if (d < minDist) {
               minDist = d;
               frontGreenCoord = ptFeat.geometry.coordinates;
@@ -2040,7 +2328,7 @@
         } else {
           let minDist = Infinity;
           greenFeat.coords.forEach((c) => {
-            const d = turf.distance(turf.point(teeCoord), turf.point(c), { units: "meters" });
+            const d = turf.distance(turf.point(approachOriginCoord), turf.point(c), { units: "meters" });
             if (d < minDist) {
               minDist = d;
               frontGreenCoord = c;
@@ -2049,12 +2337,24 @@
         }
       }
 
+      // Project into Hole Frame (Tee -> Green = +Y)
       function projectToHoleYards(coord) {
-        const distMeters = turf.distance(turf.point(teeCoord), turf.point(coord), { units: "meters" });
-        const distYards = distMeters * M_TO_YARD;
+        const distYards = turf.distance(turf.point(teeCoord), turf.point(coord), { units: "meters" }) * M_TO_YARD;
         if (distYards < 0.01) return { x: 0, y: 0 };
         const ptBearing = turf.bearing(turf.point(teeCoord), turf.point(coord));
         const relAngleRad = ((ptBearing - holeBearingDeg) * Math.PI) / 180;
+        return {
+          x: distYards * Math.sin(relAngleRad),
+          y: distYards * Math.cos(relAngleRad)
+        };
+      }
+
+      // Project into Green Approach Frame (Front of Green = (0,0), Approach Vector = +Y straight up!)
+      function projectToApproachYards(coord) {
+        const distYards = turf.distance(turf.point(frontGreenCoord), turf.point(coord), { units: "meters" }) * M_TO_YARD;
+        if (distYards < 0.01) return { x: 0, y: 0 };
+        const ptBearing = turf.bearing(turf.point(frontGreenCoord), turf.point(coord));
+        const relAngleRad = ((ptBearing - approachBearingDeg) * Math.PI) / 180;
         return {
           x: distYards * Math.sin(relAngleRad),
           y: distYards * Math.cos(relAngleRad)
@@ -2080,34 +2380,64 @@
       let greenDepthYards = 30;
       let backGreenXY = { x: greenCenterXY.x, y: frontGreenXY.y + 30 };
       if (greenFeat && greenFeat.coords.length >= 4) {
-        let maxY = -Infinity;
-        let minY = Infinity;
+        let maxY = -Infinity, minY = Infinity;
+        let maxAppY = -Infinity, minAppY = Infinity;
         greenFeat.coords.forEach((c) => {
           const p = projectToHoleYards(c);
-          if (p.y > maxY) {
-            maxY = p.y;
-            backGreenXY = p;
-          }
+          const pApp = projectToApproachYards(c);
+          if (p.y > maxY) { maxY = p.y; backGreenXY = p; }
           if (p.y < minY) minY = p.y;
+          if (pApp.y > maxAppY) maxAppY = pApp.y;
+          if (pApp.y < minAppY) minAppY = pApp.y;
         });
-        greenDepthYards = Math.max(10, Math.round(maxY - minY));
+        greenDepthYards = Math.max(10, Math.round(maxAppY - minAppY));
       }
 
+      // Compute Auto 20-Yard Fairway + Green Corridor Cutout Polygon
+      let autoCorridorRing = null;
+      const corridorYds = parseFloat(document.getElementById("meta-corridor-yds").value) || 20;
+      try {
+        const basePolys = [];
+        holeData.features.filter((f) => f.type === "fairway" || f.type === "green").forEach((f) => {
+          if (f.coords && f.coords.length >= 4) basePolys.push(turf.polygon([f.coords]));
+        });
+        if (basePolys.length > 0) {
+          const fc = turf.featureCollection(basePolys);
+          const buffered = turf.buffer(fc, corridorYds * YARD_TO_M, { units: "meters" });
+          if (buffered && buffered.features && buffered.features.length > 0) {
+            // Merge or pick largest buffered corridor ring
+            let merged = buffered.features[0];
+            for (let i = 1; i < buffered.features.length; i++) {
+              try {
+                const u = turf.union(merged, buffered.features[i]);
+                if (u) merged = u;
+              } catch (e) { }
+            }
+            const geom = merged.geometry;
+            autoCorridorRing = geom.type === "MultiPolygon" ? geom.coordinates[0][0] : geom.coordinates[0];
+          }
+        }
+      } catch (e) { }
+
       document.getElementById("telemetry-bearing").textContent = `${Math.round(holeBearingDeg)}°`;
-      document.getElementById("telemetry-length").textContent = `${totalHoleYards} Yds`;
-      document.getElementById("telemetry-depth").textContent = `${greenDepthYards} Yds`;
+      document.getElementById("telemetry-app-bearing").textContent = `${Math.round(approachBearingDeg)}°`;
+      document.getElementById("telemetry-length").textContent = `${totalHoleYards}y`;
+      document.getElementById("telemetry-depth").textContent = `${greenDepthYards}y`;
 
       const model = {
         teeCoord,
         frontGreenCoord,
         greenCentroidCoord,
         holeBearingDeg,
+        approachBearingDeg,
         frontGreenXY,
         greenCenterXY,
         backGreenXY,
         totalHoleYards,
         greenDepthYards,
+        autoCorridorRing,
         projectToHoleYards,
+        projectToApproachYards,
         yardsFromTee,
         yardsToFrontGreen
       };
@@ -2116,9 +2446,8 @@
     }
 
     /********************************************************************
-     * 7. UNIFIED TOUR YARDAGE BOOK & USGA 1:480 GREEN BOOK SVG RENDERER
+     * 7. DUAL-SCALE TOUR YARDAGE BOOK & USGA 1:480 GREEN BOOK RENDERER
      ********************************************************************/
-    // Exact 10-band Okabe-Ito slope color palette from FSG-Greens-Book/src/plotter.py
     function getSlopeColor(s) {
       if (s < 1) return '#56B4E9';
       if (s < 2) return '#0072B2';
@@ -2159,7 +2488,7 @@
     }
 
     function renderMoundHachuresSVG(screenPts, tickLen = 7, spacing = 8, outward = true) {
-      if (!showHachures || screenPts.length < 3) return "";
+      if (!showHachures || screenPts.length < 2) return "";
       let out = "";
       for (let i = 0; i < screenPts.length - 1; i++) {
         const p1 = screenPts[i];
@@ -2223,8 +2552,10 @@
       `;
     }
 
-    function renderCompassRoseSVG(cx, cy, holeBearingDeg, scale = 1) {
-      const northRotation = -holeBearingDeg;
+    function renderCompassRoseSVG(cx, cy, bearingUpDeg, scale = 1) {
+      // Since `bearingUpDeg` is rotated to point straight UP (0 deg on page),
+      // True North (0 deg compass) is located at clockwise angle `-bearingUpDeg`!
+      const northRotation = -bearingUpDeg;
       return `
         <g transform="translate(${cx}, ${cy}) scale(${scale}) rotate(${northRotation.toFixed(1)})">
           <line x1="0" y1="18" x2="0" y2="-22" stroke="#1c1917" stroke-width="1.3" />
@@ -2240,7 +2571,8 @@
     }
 
     // Renders a Green Complex using ANY provided toScreen(ptYards) projection function!
-    function renderGreenWithProjection(model, toScreen, clipId = "green-clip-main", useColorLidar = false) {
+    // NOTE: Arrow heads now point UP (0, -L/2) at 0° so `rotate(svgAngleDeg)` points in the exact downhill direction!
+    function renderGreenWithProjection(model, toScreen, clipId = "green-clip-main", useColorLidar = false, degOffset = 0) {
       const greenFeat = holeData.features.find((f) => f.type === "green");
       if (!greenFeat || greenFeat.coords.length < 4) return "";
 
@@ -2271,41 +2603,69 @@
         gridLines += `<line x1="${p1.sx.toFixed(1)}" y1="${p1.sy.toFixed(1)}" x2="${p2.sx.toFixed(1)}" y2="${p2.sy.toFixed(1)}" stroke="#78716c" stroke-width="0.45" opacity="0.55" />`;
       }
 
-      // Slope Arrows inside Green (Real USGS 3DEP LiDAR if fetched, else synthetic model)
+      // 0.5-ft Contour Isolines (if LiDAR fetched)
+      let contoursSVG = "";
+      if (holeData.lidarGrid && holeData.lidarGrid.contourSegments) {
+        holeData.lidarGrid.contourSegments.forEach((layer) => {
+          layer.segments.forEach((seg, sIdx) => {
+            const sp1 = toScreen(seg.p1);
+            const sp2 = toScreen(seg.p2);
+            contoursSVG += `<line x1="${sp1.sx.toFixed(1)}" y1="${sp1.sy.toFixed(1)}" x2="${sp2.sx.toFixed(1)}" y2="${sp2.sy.toFixed(1)}" stroke="#666666" stroke-width="0.65" opacity="0.85" />`;
+            if (sIdx === Math.floor(layer.segments.length / 2) && useColorLidar) {
+              const lbl = layer.level > 0 ? `+${layer.level.toFixed(1)}` : layer.level === 0 ? "0.0" : layer.level.toFixed(1);
+              contoursSVG += `<text x="${sp1.sx.toFixed(1)}" y="${sp1.sy.toFixed(1)}" text-anchor="middle" font-family="Inter" font-size="6.5" font-weight="600" fill="#444444" stroke="#ffffff" stroke-width="1.5" paint-order="stroke">${lbl}</text>`;
+            }
+          });
+        });
+      }
+
+      // Slope Arrows inside Green (Fixed Arrowhead at -Y so 0° = Straight Up!)
       let slopeArrows = "";
       if (holeData.lidarGrid && holeData.lidarGrid.arrows && holeData.lidarGrid.arrows.length > 0) {
+        // On Full-Hole Tour Book page, thin slightly so 5x5 grid stays clean; on USGA / Zoom views, show EVERY 2-yard arrow!
+        const stride = useColorLidar ? 1 : 2;
         holeData.lidarGrid.arrows.forEach((a, idx) => {
+          if (!useColorLidar && a.inFringe) return;
+          if (idx % stride !== 0) return;
+
           const sPt = toScreen({ x: a.xYds, y: a.yYds });
           const col = a.inFringe ? "#d05090" : (useColorLidar ? getSlopeColor(a.slopePct) : "#292524");
-          const arrowLen = Math.min(16, 7 + a.slopePct * 1.8);
+          const arrowLen = useColorLidar ? 11 : Math.min(15, 7 + a.slopePct * 1.6);
+          const rotAngle = a.svgAngleDeg + degOffset;
+
           slopeArrows += `
-            <g transform="translate(${sPt.sx.toFixed(1)}, ${sPt.sy.toFixed(1)}) rotate(${a.svgAngleDeg.toFixed(1)})">
-              <line x1="0" y1="${(-arrowLen / 2).toFixed(1)}" x2="0" y2="${(arrowLen / 2).toFixed(1)}" stroke="${col}" stroke-width="${useColorLidar ? 1.25 : 0.9}" opacity="0.9" />
-              <polygon points="0,${(arrowLen / 2 + 2).toFixed(1)} -2.1,${(arrowLen / 2 - 2).toFixed(1)} 2.1,${(arrowLen / 2 - 2).toFixed(1)}" fill="${col}" opacity="0.9" />
+            <g transform="translate(${sPt.sx.toFixed(1)}, ${sPt.sy.toFixed(1)}) rotate(${rotAngle.toFixed(1)})">
+              <line x1="0" y1="${(arrowLen / 2).toFixed(1)}" x2="0" y2="${(-arrowLen / 2).toFixed(1)}" stroke="${col}" stroke-width="${useColorLidar ? 1.35 : 0.9}" opacity="${a.inFringe ? 0.55 : 0.92}" />
+              <polygon points="0,${(-arrowLen / 2 - 2.4).toFixed(1)} -2.2,${(-arrowLen / 2 + 2.2).toFixed(1)} 2.2,${(-arrowLen / 2 + 2.2).toFixed(1)}" fill="${col}" opacity="${a.inFringe ? 0.55 : 0.92}" />
             </g>
           `;
-          if (useColorLidar && !a.inFringe && idx % 3 === 0) {
-            slopeArrows += `<text x="${(sPt.sx + 5).toFixed(1)}" y="${(sPt.sy + 2).toFixed(1)}" font-family="Inter, sans-serif" font-size="6.5" font-weight="700" fill="#111827" stroke="#ffffff" stroke-width="1.5" paint-order="stroke">${a.slopePct.toFixed(1)}</text>`;
+          if (useColorLidar && !a.inFringe && idx % 9 === 0) {
+            slopeArrows += `<text x="${sPt.sx.toFixed(1)}" y="${(sPt.sy + 2).toFixed(1)}" text-anchor="middle" font-family="Inter, sans-serif" font-size="7.5" font-weight="700" fill="#000000" stroke="#ffffff" stroke-width="1.8" paint-order="stroke">${a.slopePct.toFixed(1)}</text>`;
           }
         });
       } else {
         const slopeDirDeg = parseFloat(document.getElementById("meta-green-slope-dir").value) || 215;
         const slopePct = parseFloat(document.getElementById("meta-green-slope-pct").value) || 2.8;
-        const stepYds = 5;
+        const stepYds = useColorLidar ? 2.2 : 4.2;
 
-        for (let gx = minX + 3; gx <= maxX - 3; gx += stepYds) {
-          for (let gy = minY + 3; gy <= maxY - 3; gy += stepYds) {
+        let idx = 0;
+        for (let gx = minX + 2; gx <= maxX - 2; gx += stepYds) {
+          for (let gy = minY + 2; gy <= maxY - 2; gy += stepYds) {
             const sPt = toScreen({ x: gx, y: gy });
-            const localAngle = slopeDirDeg + 14 * Math.sin((gx + gy) * 0.18);
-            const localSlope = Math.max(0.6, slopePct + 0.8 * Math.sin(gx * 0.25));
+            const localAngle = slopeDirDeg + degOffset + 14 * Math.sin((gx + gy) * 0.18);
+            const localSlope = Math.max(0.6, slopePct + 0.85 * Math.sin(gx * 0.25) + 0.4 * Math.cos(gy * 0.2));
             const col = useColorLidar ? getSlopeColor(localSlope) : "#292524";
-            const arrowLen = Math.min(16, 7 + localSlope * 2);
+            const arrowLen = useColorLidar ? 11 : Math.min(15, 7 + localSlope * 1.6);
             slopeArrows += `
               <g transform="translate(${sPt.sx.toFixed(1)}, ${sPt.sy.toFixed(1)}) rotate(${localAngle.toFixed(1)})">
-                <line x1="0" y1="${(-arrowLen / 2).toFixed(1)}" x2="0" y2="${(arrowLen / 2).toFixed(1)}" stroke="${col}" stroke-width="${useColorLidar ? 1.2 : 0.85}" opacity="0.85" />
-                <polygon points="0,${(arrowLen / 2 + 2).toFixed(1)} -2,${(arrowLen / 2 - 2).toFixed(1)} 2,${(arrowLen / 2 - 2).toFixed(1)}" fill="${col}" opacity="0.85" />
+                <line x1="0" y1="${(arrowLen / 2).toFixed(1)}" x2="0" y2="${(-arrowLen / 2).toFixed(1)}" stroke="${col}" stroke-width="${useColorLidar ? 1.35 : 0.85}" opacity="0.88" />
+                <polygon points="0,${(-arrowLen / 2 - 2.4).toFixed(1)} -2.2,${(-arrowLen / 2 + 2.2).toFixed(1)} 2.2,${(-arrowLen / 2 + 2.2).toFixed(1)}" fill="${col}" opacity="0.88" />
               </g>
             `;
+            if (useColorLidar && idx % 11 === 0) {
+              slopeArrows += `<text x="${sPt.sx.toFixed(1)}" y="${(sPt.sy + 2).toFixed(1)}" text-anchor="middle" font-family="Inter, sans-serif" font-size="7.5" font-weight="700" fill="#000000" stroke="#ffffff" stroke-width="1.8" paint-order="stroke">${localSlope.toFixed(1)}</text>`;
+            }
+            idx++;
           }
         }
       }
@@ -2322,7 +2682,7 @@
       const backEdgePt = toScreen({ x: model.backGreenXY.x, y: model.backGreenXY.y - 1 });
       depthCallouts += `<text x="${backEdgePt.sx.toFixed(1)}" y="${backEdgePt.sy.toFixed(1)}" text-anchor="middle" class="font-tour" font-size="11" font-weight="700" fill="#b91c1c" stroke="#faf8f2" stroke-width="2.5" paint-order="stroke">${model.greenDepthYards}</text>`;
 
-      // Greenside Bunkers
+      // Greenside Bunkers (with Front & Back lip yardages relative to Front of Green)
       let greensideBunkersSVG = "";
       holeData.features
         .filter((f) => f.type === "bunker")
@@ -2351,12 +2711,15 @@
             }
           });
 
+          const dx = bunk.props?.dx || 0;
+          const dy = bunk.props?.dy || 0;
+
           greensideBunkersSVG += `
             <g class="greenside-bunker">
               ${renderMoundHachuresSVG(bScreen, 5, 7, true)}
               <path d="${bPath}" fill="#f1e6b2" stroke="#1c1917" stroke-width="1.2" />
-              <text x="${minPt.sx.toFixed(1)}" y="${(minPt.sy + 3).toFixed(1)}" text-anchor="middle" class="font-tour" font-size="10" font-weight="700" fill="#1c1917" stroke="#faf8f2" stroke-width="2.2" paint-order="stroke">${minFrontDist}</text>
-              <text x="${maxPt.sx.toFixed(1)}" y="${(maxPt.sy + 4).toFixed(1)}" text-anchor="middle" class="font-tour" font-size="10.5" font-weight="700" fill="#1c1917" stroke="#faf8f2" stroke-width="2.2" paint-order="stroke">${maxFrontDist}</text>
+              <text x="${(minPt.sx + dx).toFixed(1)}" y="${(minPt.sy + 3 + dy).toFixed(1)}" text-anchor="middle" class="font-tour" font-size="10" font-weight="700" fill="#1c1917" stroke="#faf8f2" stroke-width="2.2" paint-order="stroke">${minFrontDist}</text>
+              <text x="${(maxPt.sx + dx).toFixed(1)}" y="${(maxPt.sy + 4 + dy).toFixed(1)}" text-anchor="middle" class="font-tour" font-size="10.5" font-weight="700" fill="#1c1917" stroke="#faf8f2" stroke-width="2.2" paint-order="stroke">${maxFrontDist}</text>
             </g>
           `;
         });
@@ -2390,6 +2753,7 @@
 
           <g clip-path="url(#${clipId})">
             ${gridLines}
+            ${contoursSVG}
             ${slopeArrows}
             <ellipse cx="${apex1.sx.toFixed(1)}" cy="${apex1.sy.toFixed(1)}" rx="4" ry="2.6" fill="#f97316" opacity="0.85" />
             <circle cx="${apex2.sx.toFixed(1)}" cy="${apex2.sy.toFixed(1)}" r="2.6" fill="#10b981" opacity="0.85" />
@@ -2429,7 +2793,7 @@
       return renderGreenWithProjection(model, toZoomScreen, clipId, useColorLidar);
     }
 
-    // Dedicated Renderer for the USGA 1:480 Scale Green Contour Book (Exact replica of Lakeview_Golf_Course_TourBook.pdf)
+    // Dedicated Renderer for the USGA 1:480 Scale Green Contour Book (Oriented by Approach Bearing + Dense 2-Yard Arrows!)
     function renderUSGA1480PageSVG(model) {
       const holeNum = document.getElementById("meta-hole-num").value || 1;
       const holePar = document.getElementById("meta-hole-par").value || 4;
@@ -2440,71 +2804,86 @@
         return `<rect width="540" height="900" fill="#ffffff" /><text x="270" y="450" text-anchor="middle" font-family="Inter" font-size="16" fill="#333">Trace or Pull an OSM Green Polygon first.</text>`;
       }
 
-      const greenPtsYards = greenFeat.coords.map((c) => model.projectToHoleYards(c));
-      const minGY = Math.min(...greenPtsYards.map((p) => p.y));
-      const maxGY = Math.max(...greenPtsYards.map((p) => p.y));
-      const cx = model.greenCenterXY.x;
+      // Project Green into the APPROACH Bearing Frame so the entrance throat is at the bottom (0 yards depth)
+      const degDiff = model.holeBearingDeg - model.approachBearingDeg;
+      const radDiff = (degDiff * Math.PI) / 180;
+      const rotateHolePtToApp = (ptHole) => {
+        const dx = ptHole.x - model.frontGreenXY.x;
+        const dy = ptHole.y - model.frontGreenXY.y;
+        return {
+          x: dx * Math.cos(radDiff) + dy * Math.sin(radDiff),
+          y: -dx * Math.sin(radDiff) + dy * Math.cos(radDiff)
+        };
+      };
+
+      const greenPtsApp = greenFeat.coords.map((c) => rotateHolePtToApp(model.projectToHoleYards(c)));
+      const minGX = Math.min(...greenPtsApp.map((p) => p.x));
+      const maxGX = Math.max(...greenPtsApp.map((p) => p.x));
+      const minGY = Math.min(...greenPtsApp.map((p) => p.y));
+      const maxGY = Math.max(...greenPtsApp.map((p) => p.y));
+      const cx = (minGX + maxGX) / 2;
       const cy = (minGY + maxGY) / 2;
 
-      // USGA 1:480 Scale Window (56.6 yards wide)
-      const viewW = 540, viewH = 360 + 540; // Top 360px Notes + Bottom 540px Green Complex
       const boxX = 0, boxY = 360, boxW = 540, boxH = 540;
-      const greenSpanW = Math.max(48, Math.max(...greenPtsYards.map((p) => p.x)) - Math.min(...greenPtsYards.map((p) => p.x)) + 16);
-      const greenSpanH = Math.max(48, maxGY - minGY + 16);
+      const greenSpanW = Math.max(44, maxGX - minGX + 16);
+      const greenSpanH = Math.max(44, maxGY - minGY + 16);
       const pxPerYard = Math.min(boxW / greenSpanW, (boxH - 50) / greenSpanH);
 
-      const toUSGA = (ptYards) => ({
-        sx: boxX + boxW / 2 + (ptYards.x - cx) * pxPerYard,
-        sy: boxY + (boxH - 35) / 2 - (ptYards.y - cy) * pxPerYard
+      const toUSGAFromApp = (ptApp) => ({
+        sx: boxX + boxW / 2 + (ptApp.x - cx) * pxPerYard,
+        sy: boxY + (boxH - 35) / 2 - (ptApp.y - cy) * pxPerYard
       });
 
-      // 1-Yard and 5-Yard Full Background Grid (anchored to front of green minGY and center cx, matching plotter.py)
+      const toUSGAFromHole = (ptHole) => toUSGAFromApp(rotateHolePtToApp(ptHole));
+
+      // 1-Yard and 5-Yard Full Background Grid (anchored to front of green minGY and center cx)
       let gridSVG = "";
       for (let n = -35; n <= 35; n++) {
         const xVal = cx + n;
-        const p1 = toUSGA({ x: xVal, y: cy - 35 });
-        const p2 = toUSGA({ x: xVal, y: cy + 35 });
+        const p1 = toUSGAFromApp({ x: xVal, y: cy - 35 });
+        const p2 = toUSGAFromApp({ x: xVal, y: cy + 35 });
         const is5 = n % 5 === 0;
         gridSVG += `<line x1="${p1.sx.toFixed(1)}" y1="360" x2="${p2.sx.toFixed(1)}" y2="855" stroke="${is5 ? '#d5d5d5' : '#f0f0f0'}" stroke-width="${is5 ? '0.9' : '0.45'}" />`;
       }
       for (let n = -15; n <= 45; n++) {
         const yVal = minGY + n;
-        const p1 = toUSGA({ x: cx - 35, y: yVal });
-        const p2 = toUSGA({ x: cx + 35, y: yVal });
+        const p1 = toUSGAFromApp({ x: cx - 35, y: yVal });
+        const p2 = toUSGAFromApp({ x: cx + 35, y: yVal });
         if (p1.sy >= 360 && p1.sy <= 855) {
           const is5 = n % 5 === 0;
-          gridSVG += `<line x1="0" y1="${p1.sy.toFixed(1)}" x2="540" y2="${p2.sy.toFixed(1)}" stroke="${is5 ? '#d5d5d5' : '#f0f0f0'}" stroke-width="${is5 ? '0.9' : '0.45'}" />`;
+          gridSVG += `<line x1="0" y1="${p1.sy.toFixed(1)}" x2="540" y2="${p1.sy.toFixed(1)}" stroke="${is5 ? '#d5d5d5' : '#f0f0f0'}" stroke-width="${is5 ? '0.9' : '0.45'}" />`;
         }
       }
 
       // Bunkers
       let bunkersSVG = "";
       holeData.features.filter((f) => f.type === "bunker").forEach((b) => {
-        const bPts = b.coords.map((c) => model.projectToHoleYards(c));
-        const avgY = bPts.reduce((a, p) => a + p.y, 0) / bPts.length;
+        const bPtsApp = b.coords.map((c) => rotateHolePtToApp(model.projectToHoleYards(c)));
+        const avgY = bPtsApp.reduce((a, p) => a + p.y, 0) / bPtsApp.length;
         if (avgY < minGY - 25) return;
-        const bPath = catmullRomSplinePath(bPts.map(toUSGA), true, 0.2);
+        const bPath = catmullRomSplinePath(bPtsApp.map(toUSGAFromApp), true, 0.2);
         bunkersSVG += `<path d="${bPath}" fill="#e5dacc" fill-opacity="0.85" stroke="#b0b0b0" stroke-width="1.1" />`;
       });
 
-      // Fringe (1.3 yards buffer around green)
+      // Fringe (1.2m dashed collar around green)
       const fringeTurf = turf.buffer(turf.polygon([greenFeat.coords]), 1.2, { units: "meters" });
-      const fringeScreen = fringeTurf.geometry.coordinates[0].map((c) => toUSGA(model.projectToHoleYards(c)));
+      const fringeScreen = fringeTurf.geometry.coordinates[0].map((c) => toUSGAFromHole(model.projectToHoleYards(c)));
       const fringePathD = catmullRomSplinePath(fringeScreen, true, 0.2);
 
-      const greenScreen = greenPtsYards.map(toUSGA);
+      const greenScreen = greenPtsApp.map(toUSGAFromApp);
       const greenPathD = catmullRomSplinePath(greenScreen, true, 0.2);
 
-      // Depth Labels Hugging Left & Right Boundary of Green Every 5 Yards (from plotter.py lines 198-209)
+      // Depth Labels Hugging Left & Right Boundary of Green Every 5 Yards
       let sideDepthLabels = "";
-      for (let dYds = 0; dYds <= model.greenDepthYards; dYds += 5) {
+      const totalDepth = Math.max(10, Math.round(maxGY - minGY));
+      for (let dYds = 0; dYds <= totalDepth; dYds += 5) {
         const targetY = minGY + dYds;
-        const nearPts = greenPtsYards.filter((p) => Math.abs(p.y - targetY) < 2.8);
+        const nearPts = greenPtsApp.filter((p) => Math.abs(p.y - targetY) < 2.6);
         if (nearPts.length > 0) {
           const leftX = Math.min(...nearPts.map((p) => p.x));
           const rightX = Math.max(...nearPts.map((p) => p.x));
-          const pL = toUSGA({ x: leftX - 1.6, y: targetY });
-          const pR = toUSGA({ x: rightX + 1.6, y: targetY });
+          const pL = toUSGAFromApp({ x: leftX - 1.5, y: targetY });
+          const pR = toUSGAFromApp({ x: rightX + 1.5, y: targetY });
           sideDepthLabels += `
             <text x="${pL.sx.toFixed(1)}" y="${(pL.sy + 3).toFixed(1)}" text-anchor="end" font-family="Inter" font-size="9.5" font-weight="700" fill="#555555">${dYds}</text>
             <text x="${pR.sx.toFixed(1)}" y="${(pR.sy + 3).toFixed(1)}" text-anchor="start" font-family="Inter" font-size="9.5" font-weight="700" fill="#555555">${dYds}</text>
@@ -2512,51 +2891,66 @@
         }
       }
 
-      // Slope Arrows & Labels (Real LiDAR or Synthetic)
+      // 0.5-ft Contours & Dense 2-Yard Slope Arrows (Fixed Arrowhead at -Y so 0° = Up!)
+      let contoursSVG = "";
+      if (holeData.lidarGrid && holeData.lidarGrid.contourSegments) {
+        holeData.lidarGrid.contourSegments.forEach((layer) => {
+          layer.segments.forEach((seg, sIdx) => {
+            const sp1 = toUSGAFromHole(seg.p1);
+            const sp2 = toUSGAFromHole(seg.p2);
+            contoursSVG += `<line x1="${sp1.sx.toFixed(1)}" y1="${sp1.sy.toFixed(1)}" x2="${sp2.sx.toFixed(1)}" y2="${sp2.sy.toFixed(1)}" stroke="#666666" stroke-width="0.75" opacity="0.85" />`;
+            if (sIdx === Math.floor(layer.segments.length / 2)) {
+              const lbl = layer.level > 0 ? `+${layer.level.toFixed(1)}` : layer.level === 0 ? "0.0" : layer.level.toFixed(1);
+              contoursSVG += `<text x="${sp1.sx.toFixed(1)}" y="${sp1.sy.toFixed(1)}" text-anchor="middle" font-family="Inter" font-size="7" font-weight="600" fill="#444444" stroke="#ffffff" stroke-width="1.8" paint-order="stroke">${lbl}</text>`;
+            }
+          });
+        });
+      }
+
       let arrowsSVG = "";
       const slopeDirDeg = parseFloat(document.getElementById("meta-green-slope-dir").value) || 215;
       const slopePct = parseFloat(document.getElementById("meta-green-slope-pct").value) || 2.8;
 
       if (holeData.lidarGrid && holeData.lidarGrid.arrows && holeData.lidarGrid.arrows.length > 0) {
         holeData.lidarGrid.arrows.forEach((a, idx) => {
-          const sPt = toUSGA({ x: a.xYds, y: a.yYds });
+          const sPt = toUSGAFromHole({ x: a.xYds, y: a.yYds });
           const col = a.inFringe ? "#d05090" : getSlopeColor(a.slopePct);
           const op = a.inFringe ? "0.55" : "0.95";
+          const rotAng = a.svgAngleDeg + degDiff;
           arrowsSVG += `
-            <g transform="translate(${sPt.sx.toFixed(1)}, ${sPt.sy.toFixed(1)}) rotate(${a.svgAngleDeg.toFixed(1)})" opacity="${op}">
-              <line x1="0" y1="-7" x2="0" y2="7" stroke="${col}" stroke-width="1.6" />
-              <polygon points="0,10 -3,4 3,4" fill="${col}" />
+            <g transform="translate(${sPt.sx.toFixed(1)}, ${sPt.sy.toFixed(1)}) rotate(${rotAng.toFixed(1)})" opacity="${op}">
+              <line x1="0" y1="6.5" x2="0" y2="-6.5" stroke="${col}" stroke-width="1.5" />
+              <polygon points="0,-9.5 -2.8,-3.5 2.8,-3.5" fill="${col}" />
             </g>
           `;
-          if (!a.inFringe && idx % 3 === 0) {
-            arrowsSVG += `<text x="${sPt.sx.toFixed(1)}" y="${(sPt.sy - 6).toFixed(1)}" text-anchor="middle" font-family="Inter" font-size="9.5" font-weight="600" fill="#111" stroke="#fff" stroke-width="2" paint-order="stroke">${a.slopePct.toFixed(1)}</text>`;
+          if (!a.inFringe && idx % 9 === 0) {
+            arrowsSVG += `<text x="${sPt.sx.toFixed(1)}" y="${(sPt.sy + 2).toFixed(1)}" text-anchor="middle" font-family="Inter" font-size="8.5" font-weight="700" fill="#000" stroke="#fff" stroke-width="2" paint-order="stroke">${a.slopePct.toFixed(1)}</text>`;
           }
         });
       } else {
-        const minGX = Math.min(...greenPtsYards.map((p) => p.x));
-        const maxGX = Math.max(...greenPtsYards.map((p) => p.x));
+        // Dense 2.1-Yard Synthetic Grid (matches step=2 in plotter.py)
         let idx = 0;
-        for (let gx = minGX + 2; gx <= maxGX - 2; gx += 3.2) {
-          for (let gy = minGY + 2; gy <= maxGY - 2; gy += 3.2) {
-            const sPt = toUSGA({ x: gx, y: gy });
-            const locAng = slopeDirDeg + 15 * Math.sin((gx + gy) * 0.16);
-            const locSlope = Math.max(0.5, slopePct + 0.85 * Math.cos((gx - gy) * 0.2));
+        for (let gx = minGX + 1.5; gx <= maxGX - 1.5; gx += 2.1) {
+          for (let gy = minGY + 1.5; gy <= maxGY - 1.5; gy += 2.1) {
+            const sPt = toUSGAFromApp({ x: gx, y: gy });
+            const locAng = slopeDirDeg + 16 * Math.sin((gx + gy) * 0.18);
+            const locSlope = Math.max(0.6, slopePct + 0.9 * Math.cos((gx - gy) * 0.22));
             const col = getSlopeColor(locSlope);
             arrowsSVG += `
               <g transform="translate(${sPt.sx.toFixed(1)}, ${sPt.sy.toFixed(1)}) rotate(${locAng.toFixed(1)})">
-                <line x1="0" y1="-7" x2="0" y2="7" stroke="${col}" stroke-width="1.6" />
-                <polygon points="0,10 -3,4 3,4" fill="${col}" />
+                <line x1="0" y1="6.5" x2="0" y2="-6.5" stroke="${col}" stroke-width="1.5" />
+                <polygon points="0,-9.5 -2.8,-3.5 2.8,-3.5" fill="${col}" />
               </g>
             `;
-            if (idx % 7 === 0) {
-              arrowsSVG += `<text x="${sPt.sx.toFixed(1)}" y="${(sPt.sy - 6).toFixed(1)}" text-anchor="middle" font-family="Inter" font-size="9.5" font-weight="600" fill="#111" stroke="#fff" stroke-width="2" paint-order="stroke">${locSlope.toFixed(1)}</text>`;
+            if (idx % 12 === 0) {
+              arrowsSVG += `<text x="${sPt.sx.toFixed(1)}" y="${(sPt.sy + 2).toFixed(1)}" text-anchor="middle" font-family="Inter" font-size="8.5" font-weight="700" fill="#000" stroke="#fff" stroke-width="2" paint-order="stroke">${locSlope.toFixed(1)}</text>`;
             }
             idx++;
           }
         }
       }
 
-      // 10-Band Okabe-Ito Legend Bar at Bottom (from plotter.py lines 302-311)
+      // 10-Band Okabe-Ito Legend Bar at Bottom
       const legendColors = ['#56B4E9', '#0072B2', '#009E73', '#52B788', '#2D6A4F', '#E69F00', '#D55E00', '#CC3333', '#990000', '#882255'];
       const legendLabels = ['0-1', '1-2', '2-3', '3-4', '4-5', '5-6', '6-7', '7-8', '8-9', '9+'];
       const barW = 46;
@@ -2583,21 +2977,21 @@
         <path d="${fringePathD}" fill="#ffffff" fill-opacity="0.6" stroke="#777777" stroke-width="1.2" stroke-dasharray="4,3" />
         <path d="${greenPathD}" fill="#ffffff" fill-opacity="0.45" stroke="#3a8c54" stroke-width="3.2" />
 
-        <defs><clipPath id="usga-page-clip"><path d="${greenPathD}" /></clipPath></defs>
+        <defs><clipPath id="usga-page-clip"><path d="${fringePathD}" /></clipPath></defs>
         <g clip-path="url(#usga-page-clip)">
+          ${contoursSVG}
           ${arrowsSVG}
         </g>
 
         ${sideDepthLabels}
 
-        <!-- Compass, Course Name & Total Depth Header inside Green View -->
-        ${renderCompassRoseSVG(48, 415, model.holeBearingDeg, 1.0)}
+        <!-- Compass (Oriented by Exact Approach Bearing!), Course Name & Total Depth Header -->
+        ${renderCompassRoseSVG(48, 415, model.approachBearingDeg, 1.0)}
         <text x="105" y="422" font-family="Inter" font-size="20" font-weight="700" fill="#111111">${courseName}</text>
-        <text x="510" y="420" text-anchor="end" font-family="Inter" font-size="34" font-weight="800" fill="#333333">${model.greenDepthYards}</text>
+        <text x="510" y="420" text-anchor="end" font-family="Inter" font-size="34" font-weight="800" fill="#333333">${totalDepth}</text>
 
         ${legendSVG}
 
-        <!-- Divider & Outer Frame (from plotter.py lines 322-327) -->
         <line x1="0" y1="360" x2="540" y2="360" stroke="#27ae60" stroke-width="2.5" />
         <rect x="4" y="4" width="532" height="892" fill="none" stroke="#5c805c" stroke-width="7" />
       `;
@@ -2609,6 +3003,7 @@
 
       const holeNum = document.getElementById("meta-hole-num").value || 1;
       const holePar = document.getElementById("meta-hole-par").value || 4;
+      const greenZoomRatio = parseFloat(document.getElementById("meta-green-zoom").value) || 2.3;
 
       if (viewMode === "usga") {
         svg.setAttribute("viewBox", "0 0 540 900");
@@ -2622,9 +3017,9 @@
           <rect x="0" y="0" width="540" height="720" fill="#faf8f2" />
           <rect x="14" y="14" width="512" height="692" fill="none" stroke="#1c1917" stroke-width="1.5" />
           <text x="270" y="46" text-anchor="middle" class="font-tour" font-size="22" font-weight="700" fill="#1c1917" letter-spacing="1">HOLE ${holeNum} — GREEN COMPLEX (5x5 YD GRID)</text>
-          <text x="270" y="64" text-anchor="middle" font-family="Inter, sans-serif" font-size="11" fill="#57534e">Total Depth: ${model.greenDepthYards} Yds • Primary Fall: ${document.getElementById("meta-green-slope-dir").value}° (${document.getElementById("meta-green-slope-pct").value}%)</text>
+          <text x="270" y="64" text-anchor="middle" font-family="Inter, sans-serif" font-size="11" fill="#57534e">Total Depth: ${model.greenDepthYards} Yds • Approach Bearing: ${Math.round(model.approachBearingDeg)}°</text>
           ${renderZoomedGreenBox(model, 35, 80, 470, 560, "green-clip-only", Boolean(holeData.lidarGrid))}
-          ${renderCompassRoseSVG(475, 650, model.holeBearingDeg, 1.05)}
+          ${renderCompassRoseSVG(475, 650, model.approachBearingDeg, 1.05)}
           <text x="35" y="685" class="font-tour" font-size="14" font-weight="700" fill="#1c1917">PAR ${holePar} • ${model.totalHoleYards} YDS</text>
         `;
         return;
@@ -2649,33 +3044,62 @@
         });
       }
 
-      const minYData = allYardsPts.length ? Math.min(...allYardsPts.map((p) => p.y)) : 120;
-      const maxYData = allYardsPts.length ? Math.max(...allYardsPts.map((p) => p.y)) : model.backGreenXY.y;
+      const minYData = allYardsPts.length ? Math.min(...allYardsPts.map((p) => p.y)) : 180;
       const minXData = allYardsPts.length ? Math.min(...allYardsPts.map((p) => p.x)) : -35;
       const maxXData = allYardsPts.length ? Math.max(...allYardsPts.map((p) => p.x)) : 35;
 
-      // If a Crop Border is active, lock tightly to its exact bounds; otherwise add default padding
-      const padY = cropFeat ? 2 : 16;
-      const plotMinY = cropFeat ? minYData : Math.max(0, minYData - 18);
-      const plotMaxY = cropFeat ? maxYData : Math.max(model.backGreenXY.y + 14, maxYData + 14);
+      // Tour Books start the Fairway Landing Zone around ~190 yards out from the green (or where the fairway polygon begins)
+      const plotMinY = cropFeat
+        ? minYData
+        : Math.max(30, Math.min(model.frontGreenXY.y - 165, minYData - 12));
       const halfSpanX = cropFeat
         ? Math.max(20, (maxXData - minXData) / 2 + 2)
-        : Math.max(44, Math.max(Math.abs(minXData), Math.abs(maxXData)) + 16);
+        : Math.max(40, Math.max(Math.abs(minXData), Math.abs(maxXData)) + 12);
       const midX = cropFeat ? (minXData + maxXData) / 2 : 0;
-      const midY = (plotMinY + plotMaxY) / 2;
+
+      // PIECEWISE DUAL-SCALE PROJECTION (StrackaLine / Tour Sherpa Golf Secret!)
+      // In Full-Hole Tour Book Mode:
+      // - Top Zone (y >= yNeck): Green Complex rendered at `greenZoomRatio` (e.g. 2.3x USGA 1:480 scale)
+      // - Bottom Zone (y < yNeck): Fairway Landing Corridor condensed to fit cleanly from `syNeck` down to `820px`
+      // - Smooth cosine blend across [-16 yds, +2 yds] relative to Front of Green so the fairway neck connects seamlessly!
+      const yNeck = model.frontGreenXY.y - 6; // Transition datum 6 yards short of front green edge
+      const greenSpanY = Math.max(28, model.backGreenXY.y + 8 - yNeck);
+      const fwSpanY = Math.max(90, yNeck - plotMinY);
 
       const topOffset = viewMode === "split" ? 285 : 28;
-      const plotHeightPx = viewMode === "split" ? 550 : 795;
-      const plotWidthPx = 410;
+      const totalPlotHeight = viewMode === "split" ? 550 : 795;
 
-      const scaleY = plotHeightPx / Math.max(40, plotMaxY - plotMinY + padY * 2);
-      const scaleX = plotWidthPx / (halfSpanX * 2);
-      const pxPerYard = Math.min(scaleX, scaleY);
+      // Base fairway scale (pixels per yard)
+      const baseFwPxPerYard = Math.min(390 / (halfSpanX * 2), (totalPlotHeight * 0.66) / fwSpanY);
+      const greenPxPerYard = viewMode === "split"
+        ? baseFwPxPerYard
+        : Math.min(6.2, baseFwPxPerYard * greenZoomRatio);
+
+      // Screen Y position of the Neck transition
+      const syNeck = viewMode === "split"
+        ? topOffset + greenSpanY * baseFwPxPerYard
+        : Math.min(335, Math.max(220, topOffset + greenSpanY * greenPxPerYard));
+      const actualFwPxPerYard = Math.min(baseFwPxPerYard * 1.15, (topOffset + totalPlotHeight - syNeck) / fwSpanY);
 
       function yardsToPage(ptYards) {
+        const dyFromNeck = ptYards.y - yNeck;
+        // Smooth hermite blend factor w in [0, 1] across the 18-yard approach collar [-14, +4]
+        const t = Math.max(0, Math.min(1, (dyFromNeck + 14) / 18));
+        const smoothW = t * t * (3 - 2 * t);
+
+        const localScaleX = actualFwPxPerYard + (greenPxPerYard - actualFwPxPerYard) * smoothW;
+        const centerRefX = midX * (1 - smoothW) + model.greenCenterXY.x * smoothW;
+
+        let sy;
+        if (dyFromNeck >= 0) {
+          sy = syNeck - dyFromNeck * greenPxPerYard;
+        } else {
+          sy = syNeck - dyFromNeck * actualFwPxPerYard;
+        }
+
         return {
-          sx: 270 + (ptYards.x - midX) * pxPerYard,
-          sy: topOffset + plotHeightPx / 2 - (ptYards.y - midY) * pxPerYard
+          sx: 270 + (ptYards.x - centerRefX) * localScaleX,
+          sy
         };
       }
 
@@ -2693,13 +3117,13 @@
 
       // 1. SIDE MARGIN YARDAGE LADDERS
       if (showLadders) {
-        const ladderDistancesToFront = [40, 60, 80, 100, 125, 150, 175, 200, 225, 250, 275];
+        const ladderDistancesToFront = [40, 60, 80, 100, 125, 150, 175, 195, 220, 245];
         ladderDistancesToFront.forEach((distFront) => {
           const yCoord = model.frontGreenXY.y - distFront;
-          if (yCoord < plotMinY + 5 || yCoord > model.frontGreenXY.y - 22) return;
+          if (yCoord < plotMinY + 4 || yCoord > model.frontGreenXY.y - 25) return;
 
           const sPt = yardsToPage({ x: 0, y: yCoord });
-          if (sPt.sy < topOffset + 15 || sPt.sy > 825) return;
+          if (sPt.sy < syNeck + 10 || sPt.sy > 828) return;
 
           const carryAtRing = Math.max(0, Math.round(yCoord));
 
@@ -2719,11 +3143,15 @@
         });
       }
 
-      // If user drew a Crop Border, define a vector clipPath so nothing bleeds outside their polygon!
+      // 1B. CORRIDOR CUTOUT / CROP CLIPPING MASK (Manual Crop Border OR Auto 20-Yard Fairway Cutout)
       let cropClipDef = "";
       let cropGroupOpen = `<g class="hole-corridor-layer">`;
-      if (cropFeat && cropFeat.coords.length >= 4) {
-        const cropPtsScreen = cropFeat.coords.slice(0, -1).map((c) => yardsToPage(model.projectToHoleYards(c)));
+      const activeCutoutRing = (cropFeat && cropFeat.coords.length >= 4)
+        ? cropFeat.coords
+        : (showCorridorCutout && model.autoCorridorRing ? model.autoCorridorRing : null);
+
+      if (activeCutoutRing && activeCutoutRing.length >= 4) {
+        const cropPtsScreen = activeCutoutRing.slice(0, -1).map((c) => yardsToPage(model.projectToHoleYards(c)));
         const cropPolyPoints = cropPtsScreen.map((p) => `${p.sx.toFixed(1)},${p.sy.toFixed(1)}`).join(" ");
         cropClipDef = `
           <defs>
@@ -2731,8 +3159,7 @@
               <polygon points="${cropPolyPoints}" />
             </clipPath>
           </defs>
-          <!-- Subtle trim border showing the user's custom crop window -->
-          <polygon points="${cropPolyPoints}" fill="none" stroke="#a8a29e" stroke-width="0.75" stroke-dasharray="4,4" opacity="0.6" />
+          <polygon points="${cropPolyPoints}" fill="none" stroke="#a8a29e" stroke-width="0.7" stroke-dasharray="4,4" opacity="0.45" />
         `;
         cropGroupOpen = `<g class="hole-corridor-layer" clip-path="url(#user-crop-border-clip)">`;
       }
@@ -2763,7 +3190,6 @@
             .map((p, i) => `${i === 0 ? "M" : "L"} ${p.sx.toFixed(1)} ${p.sy.toFixed(1)}`)
             .join(" ");
 
-          // Perpendicular stake ticks pointing outward from the fairway centerline
           const sideSign = ptsYards[0].x < 0 ? -1 : 1;
           let ticksSVG = "";
           for (let i = 0; i < ptsScreen.length - 1; i++) {
@@ -2787,7 +3213,6 @@
             }
           }
 
-          // Place "O.B." red callout at midpoint of the OB line (matching Screenshot 1)
           const midIdx = Math.floor(ptsScreen.length / 2);
           const midPt = ptsScreen[midIdx];
           const obLabelText = ob.props?.label || "O.B.";
@@ -2801,7 +3226,7 @@
           `;
         });
 
-      // 3. FAIRWAY CONTOUR & TOPOGRAPHIC MOUND HACHURES
+      // 3. CLEAN FAIRWAY CONTOUR (No random edge ticks!) & EXPLICIT SLOPE RIDGES
       holeData.features
         .filter((f) => f.type === "fairway")
         .forEach((fw) => {
@@ -2810,30 +3235,23 @@
           const d = catmullRomSplinePath(ptsScreen, true, 0.22);
 
           svgContent += `
-            ${renderMoundHachuresSVG(ptsScreen, 7, 10, true)}
             <path d="${d}" fill="#faf8f2" stroke="#1c1917" stroke-width="1.55" />
           `;
-
-          if (showHachures) {
-            const ridge1Y = model.frontGreenXY.y - 102;
-            const ridge2Y = model.frontGreenXY.y - 42;
-            [ridge1Y, ridge2Y].forEach((ry, idx) => {
-              if (ry > plotMinY + 20 && ry < model.frontGreenXY.y - 20) {
-                const rPts = [
-                  yardsToPage({ x: -12, y: ry - 6 }),
-                  yardsToPage({ x: -4, y: ry + 2 }),
-                  yardsToPage({ x: 6, y: ry - 1 }),
-                  yardsToPage({ x: 11, y: ry - 8 })
-                ];
-                const rPath = catmullRomSplinePath(rPts, false, 0.25);
-                svgContent += `
-                  <path d="${rPath}" fill="none" stroke="#78716c" stroke-width="0.75" stroke-dasharray="3,2" />
-                  ${renderMoundHachuresSVG(rPts, idx === 0 ? 11 : 7, 6, false)}
-                `;
-              }
-            });
-          }
         });
+
+      // Render intentional Fairway Slope Ridges (drawn with the "Draw Slope Ridge" tool or from Preset 1)
+      if (showHachures) {
+        holeData.features
+          .filter((f) => f.type === "ridge")
+          .forEach((rdg) => {
+            const rPts = rdg.coords.map((c) => yardsToPage(model.projectToHoleYards(c)));
+            const rPath = catmullRomSplinePath(rPts, false, 0.25);
+            svgContent += `
+              <path d="${rPath}" fill="none" stroke="#78716c" stroke-width="0.75" stroke-dasharray="3,2" />
+              ${renderMoundHachuresSVG(rPts, 10, 6, false)}
+            `;
+          });
+      }
 
       // 4. TREES
       holeData.features
@@ -2841,16 +3259,18 @@
         .forEach((tr) => {
           const pYards = model.projectToHoleYards(tr.coords);
           const sPt = yardsToPage(pYards);
-          const radPx = (tr.props?.radius || 8) * pxPerYard;
+          const radPx = (tr.props?.radius || 8) * actualFwPxPerYard;
           const frontYds = model.yardsToFrontGreen(tr.coords);
           const carryYds = model.yardsFromTee(tr.coords);
+          const dx = tr.props?.dx || 0;
+          const dy = tr.props?.dy || 0;
 
           svgContent += renderTreeCanopySVG(sPt.sx, sPt.sy, radPx);
 
-          const labelX = pYards.x < 0 ? sPt.sx - radPx * 0.55 : sPt.sx + radPx * 0.55;
+          const labelX = (pYards.x < 0 ? sPt.sx - radPx * 0.55 : sPt.sx + radPx * 0.55) + dx;
           svgContent += renderStackedYardageSVG(
             labelX,
-            sPt.sy + 4,
+            sPt.sy + 4 + dy,
             frontYds,
             carryYds > 65 ? carryYds : null,
             tr.props?.elev || 0,
@@ -2895,19 +3315,21 @@
           const backScreen = ptsScreen[backIdx];
           const frontScreen = ptsScreen[frontIdx];
           const sideSign = ptsYards[0].x < 0 ? -1 : 1;
+          const dx = bunk.props?.dx || 0;
+          const dy = bunk.props?.dy || 0;
 
           svgContent += `
             <g class="fairway-bunker">
               ${renderMoundHachuresSVG(ptsScreen, 5.5, 7, true)}
               <path d="${d}" fill="#f1e6b2" stroke="#1c1917" stroke-width="1.25" />
-              ${renderStackedYardageSVG(backScreen.sx + sideSign * 22, backScreen.sy + 4, backFrontYds, backCarryYds)}
-              ${renderStackedYardageSVG(frontScreen.sx + sideSign * 16, frontScreen.sy - 6, lipFrontYds, lipCarryYds > 270 ? lipCarryYds : null)}
+              ${renderStackedYardageSVG(backScreen.sx + sideSign * 22 + dx, backScreen.sy + 4 + dy, backFrontYds, backCarryYds)}
+              ${renderStackedYardageSVG(frontScreen.sx + sideSign * 16 + dx, frontScreen.sy - 6 + dy, lipFrontYds, lipCarryYds > 270 ? lipCarryYds : null)}
             </g>
           `;
         });
 
-      // 6. UNIFIED GREEN COMPLEX
-      svgContent += renderGreenWithProjection(model, yardsToPage, "green-clip-unified", Boolean(holeData.lidarGrid));
+      // 6. UNIFIED DUAL-SCALE GREEN COMPLEX (Rendered at enlarged 1:480 scale at top of hole!)
+      svgContent += renderGreenWithProjection(model, yardsToPage, "green-clip-unified", false);
 
       // 7. TARGETS, AIM CROSSES, SPRINKLERS & FAIRWAY PINCH RINGS
       holeData.features
@@ -2920,6 +3342,8 @@
           const subtype = targ.props?.subtype || "cross_red";
           const elev = targ.props?.elev || 0;
           const label = targ.props?.label || "";
+          const dx = targ.props?.dx || 0;
+          const dy = targ.props?.dy || 0;
 
           let symbolSVG = "";
           if (subtype === "cross_red" || subtype === "cross_gold") {
@@ -2946,8 +3370,8 @@
             <g class="target-point cursor-pointer" data-id="${targ.id}">
               ${symbolSVG}
               ${renderStackedYardageSVG(
-            sPt.sx,
-            sPt.sy,
+            sPt.sx + dx,
+            sPt.sy + dy,
             frontYds,
             carryYds > 65 ? carryYds : null,
             elev,
@@ -2959,18 +3383,25 @@
 
       svgContent += `</g>`;
 
-      // 8. BOTTOM HOLE TITLE BLOCK, TEE BOX SCHEMATIC & COMPASS ROSE
+      // 8. DUAL COMPASS ROSES (Top Green Approach Compass + Bottom Tee Box Compass, matching Photos 1 & 2!)
       const teeFeat = holeData.features.find((f) => f.type === "tee");
       const teeElev = teeFeat?.props?.elev ?? 1;
       const teeElevStr = teeElev >= 0 ? `+${teeElev}` : `${teeElev}`;
 
+      if (viewMode === "full") {
+        // Upper Green Approach Compass Rose (like Photo 1 right of green & Photo 2 left of green)
+        svgContent += renderCompassRoseSVG(445, Math.min(265, syNeck - 10), model.approachBearingDeg, 0.78);
+      }
+
       svgContent += `
+        <!-- Bottom Hole Number & Yardage Title Block -->
         <g transform="translate(88, 868)">
           <text x="0" y="0" text-anchor="middle" class="font-tour" font-size="48" font-weight="700" fill="#1c1917">${holeNum}</text>
           <text x="0" y="18" text-anchor="middle" class="font-tour" font-size="15" font-weight="600" fill="#292524">${model.totalHoleYards} Yds</text>
           <text x="0" y="33" text-anchor="middle" class="font-tour" font-size="13" font-weight="500" fill="#44403c">Par ${holePar}</text>
         </g>
 
+        <!-- Detached Tee Box Inset & Tee-to-Fairway Compass Rose -->
         <g transform="translate(395, 860)">
           <rect x="-18" y="-36" width="9" height="16" fill="none" stroke="#44403c" stroke-width="1" transform="rotate(-8)" />
           <rect x="-14" y="-14" width="9" height="16" fill="none" stroke="#44403c" stroke-width="1" transform="rotate(-5)" />
@@ -2989,7 +3420,7 @@
     }
 
     /********************************************************************
-     * 8. UI CONTROLS, PRESET SWITCHING, SVG EXPORT & GEOJSON MODAL
+     * 8. UI CONTROLS, PROJECT SAVE/LOAD, SVG EXPORT & GEOJSON MODAL
      ********************************************************************/
     document.querySelectorAll(".tool-btn").forEach((btn) => {
       btn.addEventListener("click", () => setTool(btn.dataset.tool));
@@ -3003,7 +3434,7 @@
       if (val === "preset1") {
         holeData = buildPreset1Hole();
         syncMapFromState(true);
-        showToast("Loaded Championship Par 4 (448 Yds - Screenshot 1 Layout)");
+        showToast("Loaded Championship Par 4 (448 Yds - Dual-Scale Layout)");
       } else if (val === "preset2") {
         holeData = buildPreset2Hole();
         syncMapFromState(true);
@@ -3019,8 +3450,11 @@
       document.getElementById("meta-green-slope-pct").value = holeData.meta.greenSlopePct;
     });
 
-    ["meta-course-name", "meta-hole-num", "meta-hole-par", "meta-green-slope-dir", "meta-green-slope-pct"].forEach((id) => {
-      document.getElementById(id).addEventListener("input", () => renderYardageBookSVG());
+    ["meta-course-name", "meta-hole-num", "meta-hole-par", "meta-green-zoom", "meta-corridor-yds", "meta-green-slope-dir", "meta-green-slope-pct"].forEach((id) => {
+      document.getElementById(id).addEventListener("input", () => {
+        renderYardageBookSVG();
+        saveStateToLocalStorage();
+      });
     });
 
     document.querySelectorAll(".view-mode-btn").forEach((btn) => {
@@ -3035,6 +3469,15 @@
         });
         renderYardageBookSVG();
       });
+    });
+
+    document.getElementById("toggle-corridor-btn").addEventListener("click", (e) => {
+      showCorridorCutout = !showCorridorCutout;
+      e.currentTarget.classList.toggle("text-fuchsia-400", showCorridorCutout);
+      e.currentTarget.classList.toggle("border-fuchsia-500/50", showCorridorCutout);
+      e.currentTarget.classList.toggle("text-slate-500", !showCorridorCutout);
+      renderYardageBookSVG();
+      showToast(showCorridorCutout ? "Auto 20-Yard Fairway Cutout enabled" : "Auto Fairway Cutout disabled");
     });
 
     document.getElementById("toggle-ladders-btn").addEventListener("click", (e) => {
@@ -3052,7 +3495,61 @@
       e.currentTarget.classList.toggle("border-emerald-500/50", showHachures);
       e.currentTarget.classList.toggle("text-slate-500", !showHachures);
       renderYardageBookSVG();
-      showToast(showHachures ? "Topographic mound hachures enabled" : "Mound hachures hidden");
+      showToast(showHachures ? "Bank & ridge hachures enabled" : "Hachures hidden");
+    });
+
+    // Save Full 18-Hole Course Project (.json) to Disk
+    document.getElementById("save-project-btn").addEventListener("click", () => {
+      saveStateToLocalStorage();
+      const raw = localStorage.getItem(STORAGE_KEY) || JSON.stringify({ courseHolesStore });
+      const blob = new Blob([raw], { type: "application/json;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const cName = (document.getElementById("meta-course-name").value || "course").toLowerCase().replace(/\s+/g, "_");
+      link.href = url;
+      link.download = `${cName}_18hole_tourbook_project.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      showToast("Saved Full 18-Hole Course Project (.json)!");
+    });
+
+    // Upload 18-Hole Course Project (.json) from Disk
+    document.getElementById("upload-project-input").addEventListener("change", (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          const text = ev.target.result;
+          const parsed = JSON.parse(text);
+          if (parsed.courseHolesStore) {
+            localStorage.setItem(STORAGE_KEY, text);
+            loadStateFromLocalStorage();
+            document.getElementById("geojson-modal").classList.add("hidden");
+            syncMapFromState(true);
+            showToast("Loaded Full 18-Hole Course Project!");
+          } else {
+            document.getElementById("geojson-textarea").value = text;
+            document.getElementById("apply-geojson-btn").click();
+          }
+        } catch (err) {
+          showToast("Invalid JSON project file.");
+        }
+      };
+      reader.readAsText(file);
+    });
+
+    document.getElementById("clear-storage-btn").addEventListener("click", () => {
+      localStorage.removeItem(STORAGE_KEY);
+      courseHolesStore = {};
+      cachedCourseOSM = null;
+      holeData = buildPreset1Hole();
+      refreshHoleDropdownBadges();
+      document.getElementById("geojson-modal").classList.add("hidden");
+      syncMapFromState(true);
+      showToast("Browser cache cleared & reset to Preset 1.");
     });
 
     document.getElementById("export-svg-btn").addEventListener("click", () => {
@@ -3096,7 +3593,7 @@
           if (f.type === "tee" || f.type === "tree" || f.type === "target") {
             geomType = "Point";
             coordinates = f.coords;
-          } else if (f.type === "centerline" || f.type === "ob") {
+          } else if (f.type === "centerline" || f.type === "ob" || f.type === "ridge") {
             geomType = "LineString";
             coordinates = f.coords;
           }
@@ -3165,7 +3662,11 @@
 
     window.addEventListener("DOMContentLoaded", () => {
       lucide.createIcons();
-      syncMapFromState(true);
+      const restored = loadStateFromLocalStorage();
+      syncMapFromState(!restored);
+      if (restored) {
+        showToast("Restored saved course & hole from browser storage!");
+      }
     });
   </script>
 </body>

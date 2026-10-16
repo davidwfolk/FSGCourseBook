@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TourBook GIS Studio v3.0 — Dual-Scale Pro Yardage Book & USGA 1:480 LiDAR Generator</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Google Fonts: Inter, Oswald (Tour Book Numbers), JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&family=Oswald:wght@500;600;700&display=swap"
+    rel="stylesheet">
+
+  <!-- Leaflet CSS & JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Turf.js Geospatial Engine -->
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #0f172a;
+      color: #f8fafc;
+      overflow: hidden;
+    }
+
+    .font-tour {
+      font-family: 'Oswald', 'Arial Narrow', sans-serif;
+    }
+
+    .font-mono-code {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: #1e293b;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #475569;
+      border-radius: 3px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #64748b;
+    }
+
+    .leaflet-container {
+      background: #090d16;
+      font-family: 'Inter', sans-serif;
+    }
+
+    .vertex-handle {
+      width: 10px !important;
+      height: 10px !important;
+      margin-left: -5px !important;
+      margin-top: -5px !important;
+      background: #ffffff;
+      border: 2px solid #10b981;
+      border-radius: 50%;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+      cursor: grab;
+      transition: transform 0.1s ease;
+    }
+
+    .vertex-handle:hover {
+      transform: scale(1.35);
+      background: #10b981;
+      border-color: #ffffff;
+    }
+
+    .map-crosshair {
+      cursor: crosshair !important;
+    }
+
+    @media print {
+      body * {
+        visibility: hidden;
+      }
+
+      #svg-print-container,
+      #svg-print-container * {
+        visibility: visible;
+      }
+
+      #svg-print-container {
+        position: fixed;
+        left: 0;
+        top: 0;
+        width: 100vw;
+        height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: white !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        box-shadow: none !important;
+      }
+    }
+  </style>
+</head>
+
+<body class="h-screen w-screen flex flex-col select-none">
+
+  <!-- TOP NAVIGATION BAR -->
+  <header
+    class="h-14 bg-slate-900 border-b border-slate-800 px-3 flex items-center justify-between gap-2 shrink-0 z-30">
+    <!-- Brand -->
+    <div class="flex items-center gap-2.5 shrink-0">
+      <div
+        class="w-9 h-9 rounded-lg bg-emerald-500/15 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shadow-inner">
+        <i data-lucide="compass" class="w-5 h-5"></i>
+      </div>
+      <div>
+        <div class="flex items-center gap-2">
+          <h1 class="font-bold text-sm tracking-tight text-white">TourBook <span class="text-emerald-400">GIS
+              v3.0</span></h1>
+          <span
+            class="text-[10px] font-mono-code uppercase px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">Dual-Scale
+            + 3DEP LiDAR</span>
+        </div>
+        <p class="text-[10px] text-slate-400 hidden 2xl:block">Auto-Saved 18-Hole Course Studio • 1:480 Green +
+          Condensed Fairway Projection</p>
+      </div>
+    </div>
+
+    <!-- Course Search, 18-Hole Switcher, Presets & Importers -->
+    <div class="flex items-center gap-1.5 flex-1 max-w-5xl mx-1">
+      <div id="course-search-wrapper" class="relative flex-1 min-w-[180px]">
+        <input id="course-search-input" type="text" autocomplete="off"
+          placeholder="Search course name or 5-digit zip (e.g. 83642, Lakeview, BanBury)..."
+          class="w-full bg-slate-800/90 border border-slate-700 text-xs text-slate-100 rounded-lg pl-8 pr-20 py-2 focus:outline-none focus:border-emerald-500 transition" />
+        <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5"></i>
+        <button id="course-search-btn"
+          class="absolute right-1.5 top-1 bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-semibold px-2.5 py-1 rounded-md transition">
+          Find Course
+        </button>
+
+        <!-- Disambiguated Course Results Dropdown -->
+        <div id="course-search-results"
+          class="hidden absolute left-0 right-0 top-full mt-1.5 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl max-h-80 overflow-y-auto z-[1000] divide-y divide-slate-800/80">
+        </div>
+      </div>
+
+      <!-- Persistent 18-Hole Course Switcher -->
+      <select id="course-hole-select" title="Switch between Holes 1–18 (All edits auto-save per hole!)"
+        class="bg-slate-800 border border-emerald-500/60 text-xs text-emerald-300 font-semibold rounded-lg px-2 py-2 focus:outline-none focus:border-emerald-400 cursor-pointer shrink-0">
+        <option value="1">Hole 1</option>
+        <option value="2">Hole 2</option>
+        <option value="3">Hole 3</option>
+        <option value="4">Hole 4</option>
+        <option value="5">Hole 5</option>
+        <option value="6">Hole 6</option>
+        <option value="7">Hole 7</option>
+        <option value="8">Hole 8</option>
+        <option value="9">Hole 9</option>
+        <option value="10">Hole 10</option>
+        <option value="11">Hole 11</option>
+        <option value="12">Hole 12</option>
+        <option value="13">Hole 13</option>
+        <option value="14">Hole 14</option>
+        <option value="15">Hole 15</option>
+        <option value="16">Hole 16</option>
+        <option value="17">Hole 17</option>
+        <option value="18">Hole 18</option>
+      </select>
+
+      <!-- Preset Selector -->
+      <select id="preset-select"
+        class="bg-slate-800 border border-slate-700 text-xs text-slate-200 rounded-lg px-2 py-2 focus:outline-none focus:border-emerald-500 cursor-pointer shrink-0">
+        <option value="preset1">Preset 1 (448y Par 4)</option>
+        <option value="preset2">Preset 2 (399y Big Oak)</option>
+        <option value="empty">Blank / Custom</option>
+      </select>
+
+      <!-- Overpass OSM Importer -->
+      <button id="osm-import-btn" title="Pull OSM Hole Vectors in View (or cache all 18 holes of the course)"
+        class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium px-2.5 py-2 rounded-lg flex items-center gap-1 shadow-sm transition shrink-0">
+        <i data-lucide="radar" class="w-3.5 h-3.5"></i>
+        <span class="hidden md:inline">Pull OSM</span>
+      </button>
+
+      <!-- Auto-Populate Fairway Yardage Dots -->
+      <button id="auto-targets-btn"
+        title="Automatically place 100 / 125 / 150 / 175 / 200yd Aim Crosses & Sprinklers along the fairway centerline"
+        class="bg-violet-600 hover:bg-violet-500 text-white text-xs font-medium px-2.5 py-2 rounded-lg flex items-center gap-1 shadow-sm transition shrink-0">
+        <i data-lucide="crosshair" class="w-3.5 h-3.5"></i>
+        <span class="hidden lg:inline">+25y Dots</span>
+      </button>
+
+      <!-- Real USGS 3DEP Dense LiDAR Scanner -->
+      <button id="lidar-fetch-btn" title="Query high-density USGS 3DEP 1-Meter LiDAR grid across the green & targets"
+        class="bg-sky-600 hover:bg-sky-500 text-white text-xs font-medium px-2.5 py-2 rounded-lg flex items-center gap-1 shadow-sm transition shrink-0">
+        <i data-lucide="mountain-snow" class="w-3.5 h-3.5"></i>
+        <span id="lidar-btn-text" class="hidden md:inline">Fetch LiDAR</span>
+      </button>
+    </div>
+
+    <!-- Save / Export Actions -->
+    <div class="flex items-center gap-1.5 shrink-0">
+      <button id="save-project-btn" title="Download entire 18-hole Course Project (.json) to disk"
+        class="bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700 text-xs font-medium px-2.5 py-1.5 rounded-lg flex items-center gap-1 transition">
+        <i data-lucide="save" class="w-3.5 h-3.5"></i>
+        <span class="hidden xl:inline">Save 18</span>
+      </button>
+      <button id="geojson-modal-btn" title="Import / Export GeoJSON or Load Course Project"
+        class="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium px-2.5 py-1.5 rounded-lg flex items-center gap-1 transition">
+        <i data-lucide="code-2" class="w-3.5 h-3.5 text-emerald-400"></i>
+        <span class="hidden lg:inline">Data</span>
+      </button>
+      <button id="export-svg-btn"
+        class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-2.5 py-1.5 rounded-lg flex items-center gap-1 shadow-sm transition">
+        <i data-lucide="download" class="w-3.5 h-3.5"></i>
+        <span class="hidden sm:inline">SVG</span>
+      </button>
+      <button id="print-book-btn"
+        class="bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-semibold px-2.5 py-1.5 rounded-lg flex items-center gap-1 shadow-sm transition">
+        <i data-lucide="printer" class="w-3.5 h-3.5"></i>
+        <span class="hidden sm:inline">Print</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN SPLIT-SCREEN WORKSPACE -->
+  <div class="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
+
+    <!-- LEFT PANE: SATELLITE GIS TRACER & EDITOR -->
+    <div
+      class="w-full lg:w-[52%] h-1/2 lg:h-full relative flex flex-col border-b lg:border-b-0 lg:border-r border-slate-800">
+
+      <!-- Map Drawing Toolbar (Floating Left) -->
+      <div
+        class="absolute top-3 left-3 z-[500] flex flex-col gap-1 bg-slate-900/95 backdrop-blur-md p-2 rounded-xl border border-slate-700/80 shadow-2xl w-44">
+        <div
+          class="text-[10px] font-semibold uppercase tracking-wider text-slate-400 px-1.5 pb-1 border-b border-slate-800 flex items-center justify-between">
+          <span>GIS Vector Tools</span>
+          <span id="active-tool-badge" class="w-2 h-2 rounded-full bg-emerald-400"></span>
+        </div>
+
+        <button data-tool="select"
+          class="tool-btn active-tool w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-2 transition bg-emerald-600 text-white">
+          <i data-lucide="mouse-pointer" class="w-3.5 h-3.5 shrink-0"></i>
+          <span>Select / Drag Nodes</span>
+        </button>
+
+        <button data-tool="tee"
+          class="tool-btn w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-2 text-slate-300 hover:bg-slate-800 transition">
+          <i data-lucide="flag-triangle-right" class="w-3.5 h-3.5 text-rose-400 shrink-0"></i>
+          <span>Set Tee Marker</span>
+        </button>
+
+        <button data-tool="centerline"
+          class="tool-btn w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-2 text-slate-300 hover:bg-slate-800 transition">
+          <i data-lucide="git-commit" class="w-3.5 h-3.5 text-amber-400 shrink-0"></i>
+          <span>Draw Centerline</span>
+        </button>
+
+        <button data-tool="green"
+          class="tool-btn w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-2 text-slate-300 hover:bg-slate-800 transition">
+          <i data-lucide="hexagon" class="w-3.5 h-3.5 text-emerald-400 shrink-0"></i>
+          <span>Trace Green</span>
+        </button>
+
+        <button data-tool="fairway"
+          class="tool-btn w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-2 text-slate-300 hover:bg-slate-800 transition">
+          <i data-lucide="spline" class="w-3.5 h-3.5 text-lime-400 shrink-0"></i>
+          <span>Trace Fairway</span>
+        </button>
+
+        <button data-tool="bunker"
+          class="tool-btn w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-2 text-slate-300 hover:bg-slate-800 transition">
+          <i data-lucide="cloud" class="w-3.5 h-3.5 text-amber-200 shrink-0"></i>
+          <span>Trace Bunker</span>
+        </button>
+
+        <button data-tool="water"
+          class="tool-btn w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-2 text-slate-300 hover:bg-slate-800 transition">
+          <i data-lucide="waves" class="w-3.5 h-3.5 text-sky-400 shrink-0"></i>
+          <span>Trace Water Hazard</span>
+        </button>
+
+        <button data-tool="tree"
+          class="tool-btn w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-2 text-slate-300 hover:bg-slate-800 transition">
+          <i data-lucide="tree-pine" class="w-3.5 h-3.5 text-emerald-300 shrink-0"></i>
+          <span>Drop Specimen Tree</span>
+        </button>
+
+        <button data-tool="target"
+          class="tool-btn w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-2 text-slate-300 hover:bg-slate-800 transition">
+          <i data-lucide="crosshair" class="w-3.5 h-3.5 text-red-400 shrink-0"></i>
+          <span>Drop Aim / Sprinkler</span>
+        </button>
+
+        <button data-tool="ridge"
+          class="tool-btn w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-2 text-slate-300 hover:bg-slate-800 transition">
+          <i data-lucide="trending-down" class="w-3.5 h-3.5 text-orange-400 shrink-0"></i>
+          <span>Draw Slope Ridge</span>
+        </button>
+
+        <button data-tool="ob"
+          class="tool-btn w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-2 text-slate-300 hover:bg-slate-800 transition">
+          <i data-lucide="fence" class="w-3.5 h-3.5 text-slate-100 shrink-0"></i>
+          <span>Draw OB Line</span>
+        </button>
+
+        <button data-tool="crop"
+          class="tool-btn w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-2 text-slate-300 hover:bg-slate-800 transition">
+          <i data-lucide="crop" class="w-3.5 h-3.5 text-fuchsia-400 shrink-0"></i>
+          <span>Draw Crop Border</span>
+        </button>
+
+        <!-- Finish Drawing Action -->
+        <button id="finish-shape-btn"
+          class="hidden w-full mt-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 flex items-center justify-center gap-1.5 shadow">
+          <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i>
+          <span>Complete Shape (Enter)</span>
+        </button>
+
+        <div class="border-t border-slate-800 my-0.5"></div>
+
+        <div class="flex items-center gap-1">
+          <button id="delete-selected-btn"
+            class="flex-1 text-left px-2 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 text-rose-400 hover:bg-rose-500/10 transition disabled:opacity-40"
+            disabled>
+            <i data-lucide="trash-2" class="w-3.5 h-3.5 shrink-0"></i>
+            <span>Delete</span>
+          </button>
+          <button id="clear-hole-btn" title="Clear current hole vectors"
+            class="px-2 py-1.5 rounded-lg text-[11px] font-medium text-slate-400 hover:text-rose-300 hover:bg-rose-950/50 transition">
+            Reset
+          </button>
+        </div>
+      </div>
+
+      <!-- Selected Feature Inspector Panel -->
+      <div id="feature-inspector"
+        class="hidden absolute top-3 right-3 z-[500] bg-slate-900/95 backdrop-blur-md p-3 rounded-xl border border-slate-700 shadow-2xl w-64">
+        <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+          <span id="inspector-title" class="text-xs font-bold text-emerald-400 uppercase tracking-wider">Feature
+            Properties</span>
+          <button id="close-inspector-btn" class="text-slate-400 hover:text-white">
+            <i data-lucide="x" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
+        <div class="space-y-2 text-xs">
+          <div>
+            <label class="block text-[10px] text-slate-400 mb-0.5">Custom Label (e.g. "Big Oak")</label>
+            <input id="prop-label" type="text" placeholder="Optional callout..."
+              class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white focus:outline-none focus:border-emerald-500" />
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-[10px] text-slate-400 mb-0.5">Elevation (Yds)</label>
+              <input id="prop-elev" type="number" step="1" placeholder="e.g. +4 or -2"
+                class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white focus:outline-none focus:border-emerald-500" />
+            </div>
+            <div id="prop-radius-wrap">
+              <label class="block text-[10px] text-slate-400 mb-0.5">Canopy Radius (Yds)</label>
+              <input id="prop-radius" type="number" min="3" max="25" value="8"
+                class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white focus:outline-none focus:border-emerald-500" />
+            </div>
+          </div>
+          <!-- Label Nudge Offset Sliders (Prevent overlapping numbers) -->
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-[10px] text-slate-400 mb-0.5">Label Nudge X (px)</label>
+              <input id="prop-dx" type="number" step="2" value="0"
+                class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white focus:outline-none focus:border-emerald-500" />
+            </div>
+            <div>
+              <label class="block text-[10px] text-slate-400 mb-0.5">Label Nudge Y (px)</label>
+              <input id="prop-dy" type="number" step="2" value="0"
+                class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white focus:outline-none focus:border-emerald-500" />
+            </div>
+          </div>
+          <div id="prop-marker-type-wrap">
+            <label class="block text-[10px] text-slate-400 mb-0.5">Symbol Style</label>
+            <select id="prop-subtype" class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white">
+              <option value="cross_red">Red Aim Cross (+)</option>
+              <option value="cross_gold">Gold Layup Cross (+)</option>
+              <option value="sprinkler">Sprinkler Dot (•)</option>
+              <option value="edge_ring">Fairway Edge Ring (◯)</option>
+            </select>
+          </div>
+          <div class="pt-1 flex justify-between items-center text-[11px] text-slate-400 font-mono-code">
+            <span id="inspector-metrics">Carry: -- | Front: --</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Leaflet Map Container -->
+      <div id="map" class="flex-1 w-full h-full z-10"></div>
+
+      <!-- Bottom Status & Telemetry Bar -->
+      <div
+        class="h-9 bg-slate-900 border-t border-slate-800 px-3 flex items-center justify-between text-[11px] text-slate-300 z-20 shrink-0">
+        <div class="flex items-center gap-3 truncate">
+          <span id="status-message" class="text-emerald-400 font-medium flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            Auto-Save Active — All 18 holes persist automatically across refreshes.
+          </span>
+        </div>
+        <div class="flex items-center gap-3 font-mono-code text-[11px] shrink-0">
+          <span>LiDAR: <strong id="telemetry-lidar" class="text-sky-400">Synthetic</strong></span>
+          <span>Tee Brg: <strong id="telemetry-bearing" class="text-white">--°</strong></span>
+          <span>App Brg: <strong id="telemetry-app-bearing" class="text-emerald-300">--°</strong></span>
+          <span>Length: <strong id="telemetry-length" class="text-amber-400">--y</strong></span>
+          <span>Green: <strong id="telemetry-depth" class="text-emerald-400">--y</strong></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT PANE: LIVE TOUR YARDAGE BOOK SVG STUDIO -->
+    <div class="w-full lg:w-[48%] h-1/2 lg:h-full bg-slate-950 flex flex-col overflow-hidden">
+
+      <!-- Studio Controls Bar -->
+      <div
+        class="bg-slate-900/90 border-b border-slate-800 px-3 py-2 flex flex-wrap items-center justify-between gap-1.5 shrink-0">
+
+        <!-- Hole & Dual-Scale Projection Controls -->
+        <div class="flex items-center gap-1.5 flex-wrap">
+          <div class="flex items-center bg-slate-800 rounded-lg border border-slate-700 px-2 py-1">
+            <span class="text-[9px] uppercase text-slate-400 mr-1 font-semibold">Course</span>
+            <input id="meta-course-name" type="text" value="Lakeview"
+              class="w-20 bg-transparent text-xs font-bold text-white focus:outline-none" />
+          </div>
+          <div class="flex items-center bg-slate-800 rounded-lg border border-slate-700 px-1.5 py-1">
+            <span class="text-[9px] uppercase text-slate-400 mr-1 font-semibold">Hole</span>
+            <input id="meta-hole-num" type="number" min="1" max="18" value="1"
+              class="w-7 bg-transparent text-xs font-bold text-white focus:outline-none text-center" />
+          </div>
+          <div class="flex items-center bg-slate-800 rounded-lg border border-slate-700 px-1.5 py-1">
+            <span class="text-[9px] uppercase text-slate-400 mr-1 font-semibold">Par</span>
+            <input id="meta-hole-par" type="number" min="3" max="6" value="4"
+              class="w-5 bg-transparent text-xs font-bold text-white focus:outline-none text-center" />
+          </div>
+          <div class="flex items-center bg-slate-800 rounded-lg border border-slate-700 px-1.5 py-1"
+            title="Green 1:480 Enlargement Ratio relative to Condensed Fairway (2.4x = Tour Standard)">
+            <span class="text-[9px] uppercase text-emerald-400 mr-1 font-semibold">Green Zoom</span>
+            <input id="meta-green-zoom" type="number" step="0.2" min="1.0" max="3.6" value="2.3"
+              class="w-9 bg-transparent text-xs font-bold text-emerald-300 focus:outline-none text-center" />
+            <span class="text-[9px] text-slate-400">x</span>
+          </div>
+          <div class="flex items-center bg-slate-800 rounded-lg border border-slate-700 px-1.5 py-1"
+            title="Auto-Cutout / OB Corridor Distance outside Fairway Edge (Yards)">
+            <span class="text-[9px] uppercase text-fuchsia-400 mr-1 font-semibold">Cutout</span>
+            <input id="meta-corridor-yds" type="number" step="5" min="10" max="50" value="20"
+              class="w-8 bg-transparent text-xs font-bold text-fuchsia-300 focus:outline-none text-center" />
+            <span class="text-[9px] text-slate-400">y</span>
+          </div>
+          <div class="flex items-center bg-slate-800 rounded-lg border border-slate-700 px-1.5 py-1"
+            title="Synthetic Fallback Slope %">
+            <span class="text-[9px] uppercase text-slate-400 mr-1 font-semibold">Slope</span>
+            <input id="meta-green-slope-pct" type="number" step="0.5" min="0.5" max="8" value="2.8"
+              class="w-8 bg-transparent text-xs font-bold text-amber-400 focus:outline-none text-center" />
+            <input id="meta-green-slope-dir" type="hidden" value="215" />
+          </div>
+        </div>
+
+        <!-- View Mode & Toggles -->
+        <div class="flex items-center gap-1">
+          <div class="inline-flex rounded-lg bg-slate-800 p-0.5 border border-slate-700">
+            <button data-view="full"
+              class="view-mode-btn bg-emerald-600 text-white text-[11px] font-semibold px-2 py-1 rounded-md transition"
+              title="Dual-Scale Tour Book Page (1:480 Green at Top + Condensed Fairway Landing Zone)">
+              Tour Book
+            </button>
+            <button data-view="split"
+              class="view-mode-btn text-slate-300 hover:text-white text-[11px] font-semibold px-2 py-1 rounded-md transition">
+              Split
+            </button>
+            <button data-view="green"
+              class="view-mode-btn text-slate-300 hover:text-white text-[11px] font-semibold px-2 py-1 rounded-md transition">
+              Green Grid
+            </button>
+            <button data-view="usga"
+              class="view-mode-btn text-slate-300 hover:text-white text-[11px] font-semibold px-2 py-1 rounded-md transition"
+              title="USGA 1:480 Scale Green Book with Dense 2-Yard Arrows, 0.5ft Contours & 10-Band Legend">
+              USGA 1:480
+            </button>
+          </div>
+
+          <button id="toggle-corridor-btn" title="Toggle Auto 20-Yard Fairway Cutout / OB Border"
+            class="p-1.5 rounded-lg bg-slate-800 border border-fuchsia-500/50 text-fuchsia-400 hover:bg-slate-700 transition text-xs">
+            <i data-lucide="scissors" class="w-3.5 h-3.5"></i>
+          </button>
+          <button id="toggle-ladders-btn" title="Toggle Side Margin Yardage Ladders"
+            class="p-1.5 rounded-lg bg-slate-800 border border-emerald-500/50 text-emerald-400 hover:bg-slate-700 transition text-xs">
+            <i data-lucide="ruler" class="w-3.5 h-3.5"></i>
+          </button>
+          <button id="toggle-hachures-btn" title="Toggle Bunker & Green Bank Hachures"
+            class="p-1.5 rounded-lg bg-slate-800 border border-emerald-500/50 text-emerald-400 hover:bg-slate-700 transition text-xs">
+            <i data-lucide="mountain" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Yardage Book Page Canvas Wrapper -->
+      <div
+        class="flex-1 overflow-auto p-4 sm:p-6 flex items-start justify-center bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:16px_16px]">
+        <div id="svg-print-container"
+          class="bg-[#faf8f2] rounded-sm shadow-[0_20px_60px_rgba(0,0,0,0.75)] border border-stone-300 transition-all duration-200 max-w-full">
+          <svg id="yardage-book-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 540 940"
+            class="w-full h-auto max-h-[calc(100vh-145px)] block select-none"></svg>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- GEOJSON / PROJECT IMPORT & EXPORT MODAL -->
+  <div id="geojson-modal"
+    class="hidden fixed inset-0 z-[1000] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div
+      class="bg-slate-900 border border-slate-700 rounded-2xl max-w-2xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+      <div class="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <i data-lucide="file-json" class="w-4 h-4 text-emerald-400"></i>
+          <h3 class="text-sm font-bold text-white">Hole GeoJSON & Full 18-Hole Project Data</h3>
+        </div>
+        <button id="close-geojson-modal" class="text-slate-400 hover:text-white">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+      <div class="p-4 flex-1 overflow-hidden flex flex-col gap-2">
+        <div class="flex items-center justify-between">
+          <p class="text-xs text-slate-400">
+            Copy/Paste single-hole GeoJSON below, or upload a saved 18-hole `.json` course project file:
+          </p>
+          <label
+            class="cursor-pointer bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-3 py-1 rounded-lg transition">
+            <span>Upload Project .JSON</span>
+            <input id="upload-project-input" type="file" accept=".json,.geojson" class="hidden" />
+          </label>
+        </div>
+        <textarea id="geojson-textarea"
+          class="w-full flex-1 min-h-[320px] bg-slate-950 border border-slate-800 rounded-xl p-3 font-mono-code text-xs text-emerald-300 focus:outline-none focus:border-emerald-500"></textarea>
+      </div>
+      <div class="px-5 py-3 bg-slate-950/60 border-t border-slate-800 flex justify-between items-center gap-2">
+        <button id="clear-storage-btn"
+          class="px-3 py-1.5 rounded-lg bg-rose-950/60 hover:bg-rose-900 text-rose-300 text-xs font-medium transition">
+          Clear Browser Cache
+        </button>
+        <div class="flex gap-2">
+          <button id="copy-geojson-btn"
+            class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 transition">
+            Copy to Clipboard
+          </button>
+          <button id="apply-geojson-btn"
+            class="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white transition">
+            Load into Studio
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION -->
+  <div id="toast"
+    class="fixed bottom-12 left-1/2 -translate-x-1/2 z-[1200] pointer-events-none opacity-0 transition-opacity duration-300 bg-slate-900/95 border border-emerald-500/50 text-white px-4 py-2 rounded-full shadow-xl text-xs font-medium flex items-center gap-2">
+    <i data-lucide="sparkles" class="w-3.5 h-3.5 text-emerald-400"></i>
+    <span id="toast-text">Notification</span>
+  </div>
+
+  <!-- APPLICATION SCRIPT -->
+    <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
