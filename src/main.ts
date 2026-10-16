@@ -909,19 +909,51 @@ let saveToNeonTimer: any = null;
       const distancesToFront = [40, 60, 80, 105, 130, 155, 180, 205];
       let added = 0;
 
-      distancesToFront.forEach((dFront, idx) => {
-        const yFromTee = model.frontGreenXY.y - dFront;
-        if (yFromTee < 140) return; // Don't drop markers back on the tee box
+      const clCoords = clFeat && clFeat.coords && clFeat.coords.length >= 2
+        ? clFeat.coords
+        : [model.teeCoord, model.frontGreenCoord];
+      const clLine = turf.lineString(clCoords);
+      const totalLenM = turf.length(clLine, { units: "meters" });
+      const totalHoleYds = totalLenM * M_TO_YARD;
 
-        // Project point along hole spine (with slight alternating offset like Tour books)
-        const latOffset = (idx % 2 === 0 ? 1 : -1) * 2.5;
-        const ptLngLat = localYardsToLngLat(model.teeCoord, latOffset, yFromTee, model.holeBearingDeg);
+      const fwPoly = (fwFeat && fwFeat.coords && fwFeat.coords.length >= 4)
+        ? turf.polygon([fwFeat.coords])
+        : null;
+
+      distancesToFront.forEach((dFront, idx) => {
+        const distFromTeeYds = totalHoleYds - dFront;
+        if (distFromTeeYds < 120) return; // Don't drop markers back on the tee box
+
+        const distFromTeeM = distFromTeeYds * YARD_TO_M;
+        if (distFromTeeM <= 10 || distFromTeeM >= totalLenM - 8) return;
+
+        // Sample point strictly along actual centerline path!
+        const sampledPt = turf.along(clLine, distFromTeeM, { units: "meters" });
+        let finalCoord = sampledPt.geometry.coordinates;
+
+        // Small alternating lateral offset (±2.5 yards) to create realistic scatter matching Photos 1 & 2
+        try {
+          const latSign = (idx % 2 === 0 ? 1 : -1);
+          const nextPt = turf.along(clLine, Math.min(totalLenM, distFromTeeM + 4), { units: "meters" });
+          const localBearing = turf.bearing(sampledPt, nextPt);
+          const offsetBearing = (localBearing + latSign * 90 + 360) % 360;
+          const candidateOffset = turf.destination(sampledPt, 2.5 * YARD_TO_M, offsetBearing, { units: "meters" });
+
+          // If fairway polygon exists, ensure offset point stays inside fairway; otherwise stick to centerline
+          if (fwPoly) {
+            if (turf.booleanPointInPolygon(candidateOffset, fwPoly)) {
+              finalCoord = candidateOffset.geometry.coordinates;
+            }
+          } else {
+            finalCoord = candidateOffset.geometry.coordinates;
+          }
+        } catch {}
 
         const subtype = dFront === 105 ? "cross_red" : (dFront === 130 || dFront === 180) ? "cross_gold" : "sprinkler";
         holeData.features.push({
           id: `auto-targ-${dFront}`,
           type: "target",
-          coords: ptLngLat,
+          coords: finalCoord,
           props: { subtype, elev: 0, label: "", dx: 0, dy: 0 }
         });
         added++;
@@ -1192,17 +1224,128 @@ let saveToNeonTimer: any = null;
       });
     }
 
+    // Load Course and all 18 Holes from Neon Postgres
+    async function loadCourseFromNeon(courseId: string) {
+      setStatus(`Loading course and all 18 holes from Neon Postgres...`);
+      showToast(`Loading course from Neon database...`);
+      const data = await apiClient.getCourse(courseId);
+      if (!data || !data.course) {
+        showToast("Could not load course from Neon database.");
+        return;
+      }
+      const c = data.course;
+      activeNeonCourseId = c.id;
+      const cleanCourseName = c.name.replace(/Golf Course|Golf Club|Country Club|GC|CC/gi, "").trim() || c.name;
+      document.getElementById("meta-course-name").value = cleanCourseName;
+
+      courseHolesStore = {};
+      if (data.holes && data.holes.length > 0) {
+        data.holes.forEach((h: any) => {
+          const hNum = h.hole_number;
+          let features: any[] = [];
+          if (h.features && Array.isArray(h.features) && h.features.length > 0) {
+            features = h.features;
+          } else {
+            // Reconstruct features if saved in separate geojson columns
+            if (h.tee_lat && h.tee_lon) {
+              features.push({
+                id: `tee-${hNum}`,
+                type: "tee",
+                coords: [parseFloat(h.tee_lon), parseFloat(h.tee_lat)],
+                props: { label: "Back Tee", elev: 0 }
+              });
+            }
+            if (h.centerline && Array.isArray(h.centerline) && h.centerline.length >= 2) {
+              features.push({
+                id: `cl-${hNum}`,
+                type: "centerline",
+                coords: h.centerline,
+                props: {}
+              });
+            }
+            if (h.green_polygon) {
+              const gCoords = h.green_polygon.coordinates ? h.green_polygon.coordinates[0] : (Array.isArray(h.green_polygon) ? h.green_polygon : null);
+              if (gCoords) {
+                features.push({
+                  id: `green-${hNum}`,
+                  type: "green",
+                  coords: gCoords,
+                  props: {}
+                });
+              }
+            }
+            if (Array.isArray(h.fairways_geojson)) {
+              h.fairways_geojson.forEach((fw: any, idx: number) => {
+                const fwCoords = fw.geometry?.coordinates?.[0] || fw.coordinates?.[0] || (Array.isArray(fw) ? fw : null);
+                if (fwCoords) {
+                  features.push({ id: `fw-${hNum}-${idx}`, type: "fairway", coords: fwCoords, props: {} });
+                }
+              });
+            }
+            if (Array.isArray(h.bunkers_geojson)) {
+              h.bunkers_geojson.forEach((bk: any, idx: number) => {
+                const bkCoords = bk.geometry?.coordinates?.[0] || bk.coordinates?.[0] || (Array.isArray(bk) ? bk : null);
+                if (bkCoords) {
+                  features.push({ id: `bunk-${hNum}-${idx}`, type: "bunker", coords: bkCoords, props: {} });
+                }
+              });
+            }
+          }
+
+          courseHolesStore[hNum] = {
+            meta: {
+              holeNumber: hNum,
+              par: h.par || 4,
+              greenSlopeDir: 215,
+              greenSlopePct: 2.8,
+              courseName: cleanCourseName
+            },
+            lidarGrid: h.lidar_grid || null,
+            features
+          };
+        });
+
+        refreshHoleDropdownBadges();
+        switchToHoleNumber(1, true);
+        if (c.center_lat && c.center_lon) {
+          map.setView([parseFloat(c.center_lat), parseFloat(c.center_lon)], 16);
+        }
+        showToast(`Loaded ${data.holes.length} holes from Neon database!`);
+      } else {
+        // Fallback to Overpass if Neon course has no holes yet
+        await cacheAll18HolesFromOverpass(parseFloat(c.center_lat), parseFloat(c.center_lon), cleanCourseName);
+      }
+    }
+
     // Downloads & caches all 18 holes of a course in ONE Overpass call and pre-populates courseHolesStore[1..18]
     async function cacheAll18HolesFromOverpass(lat, lon, courseName) {
       setStatus(`Downloading & caching full 18-hole OSM data for ${courseName}...`);
       showToast(`Caching all holes for ${courseName}...`);
 
-      // Optimized query: exclude node["natural"="tree"] to prevent 502/504 timeouts on Overpass servers!
-      const query = `[out:json][timeout:25];(way["golf"~"hole|green|fairway|bunker|water_hazard|lateral_water_hazard|tee"](around:2000,${lat},${lon});way["natural"="water"](around:2000,${lat},${lon}););out geom;`;
-      const osm = await fetchOverpassWithFallback(query);
+      const queryWithTrees = `[out:json][timeout:25];(
+        way["golf"~"hole|green|fairway|bunker|water_hazard|lateral_water_hazard|tee"](around:2000,${lat},${lon});
+        relation["golf"~"hole|green|fairway|bunker|water_hazard|lateral_water_hazard"](around:2000,${lat},${lon});
+        way["natural"="water"](around:2000,${lat},${lon});
+        relation["natural"="water"](around:2000,${lat},${lon});
+        way["water"](around:2000,${lat},${lon});
+        node["natural"="tree"](around:1200,${lat},${lon});
+      );out geom;`;
+
+      let osm = await fetchOverpassWithFallback(queryWithTrees);
+      if (!osm || !osm.elements || osm.elements.length === 0) {
+        // Fallback query without tree nodes in case Overpass timed out
+        const queryBasic = `[out:json][timeout:25];(
+          way["golf"~"hole|green|fairway|bunker|water_hazard|lateral_water_hazard|tee"](around:2000,${lat},${lon});
+          relation["golf"~"hole|green|fairway|bunker|water_hazard|lateral_water_hazard"](around:2000,${lat},${lon});
+          way["natural"="water"](around:2000,${lat},${lon});
+          relation["natural"="water"](around:2000,${lat},${lon});
+          way["water"](around:2000,${lat},${lon});
+        );out geom;`;
+        osm = await fetchOverpassWithFallback(queryBasic);
+      }
+
       if (!osm || !osm.elements) {
         showToast("Overpass busy — zoom to a hole and click 'Pull OSM' or trace manually.");
-        // Ensure map stays on the course location
         map.setView([lat, lon], 16);
         return;
       }
@@ -1311,10 +1454,46 @@ let saveToNeonTimer: any = null;
       });
 
       const holeSpineLine = turf.lineString(centerlineCoords);
+      const greenPt = turf.point(activeGreenCenter);
+
+      // Geometry/polygon-based feature association using minimum boundary distance
       parsedOSM.features.forEach((feat) => {
-        const distToSpineYds = turf.pointToLineDistance(turf.point(feat.center), holeSpineLine, { units: "meters" }) * M_TO_YARD;
-        const maxCorridor = feat.type === "water" ? 85 : feat.type === "fairway" ? 50 : 60;
-        if (distToSpineYds <= maxCorridor) {
+        let minEdgeDistM = Infinity;
+        let minGreenDistM = Infinity;
+
+        if (Array.isArray(feat.coords[0])) {
+          for (let i = 0; i < feat.coords.length; i++) {
+            const p = turf.point(feat.coords[i]);
+            const d = turf.pointToLineDistance(p, holeSpineLine, { units: "meters" });
+            if (d < minEdgeDistM) minEdgeDistM = d;
+            const dg = turf.distance(p, greenPt, { units: "meters" });
+            if (dg < minGreenDistM) minGreenDistM = dg;
+          }
+        } else {
+          const p = turf.point(feat.coords);
+          minEdgeDistM = turf.pointToLineDistance(p, holeSpineLine, { units: "meters" });
+          minGreenDistM = turf.distance(p, greenPt, { units: "meters" });
+        }
+
+        const minEdgeDistYds = minEdgeDistM * M_TO_YARD;
+        const minGreenDistYds = minGreenDistM * M_TO_YARD;
+
+        let isMatch = false;
+        if (feat.type === "water") {
+          // Water matches if its shoreline is within 70y of the hole centerline or 55y of green
+          isMatch = (minEdgeDistYds <= 70) || (minGreenDistYds <= 55);
+        } else if (feat.type === "fairway") {
+          // Fairway matches if within 35y of hole centerline
+          isMatch = (minEdgeDistYds <= 35);
+        } else if (feat.type === "bunker") {
+          // Bunkers match if within 50y of centerline OR within 45y of green
+          isMatch = (minEdgeDistYds <= 50) || (minGreenDistYds <= 45);
+        } else if (feat.type === "tree") {
+          // Trees match if within 40y of centerline OR within 35y of green
+          isMatch = (minEdgeDistYds <= 40) || (minGreenDistYds <= 35);
+        }
+
+        if (isMatch) {
           newFeatures.push({
             id: feat.id,
             type: feat.type,
@@ -1339,15 +1518,25 @@ let saveToNeonTimer: any = null;
       const candidateFeatures = [];
 
       elements.forEach((el) => {
-        if (el.type === "way" && el.tags) {
-          const rawCoords = el.geometry
-            ? el.geometry.map((pt) => [pt.lon, pt.lat])
-            : (el.nodes || []).map((nid) => nodes[nid]).filter(Boolean);
+        if ((el.type === "way" || el.type === "relation") && el.tags) {
+          let rawCoords = [];
+          if (el.geometry) {
+            rawCoords = el.geometry.map((pt) => [pt.lon, pt.lat]);
+          } else if (el.members && Array.isArray(el.members)) {
+            const outerMember = el.members.find((m) => m.role === "outer" && m.geometry);
+            if (outerMember && outerMember.geometry) {
+              rawCoords = outerMember.geometry.map((pt) => [pt.lon, pt.lat]);
+            }
+          } else if (el.nodes) {
+            rawCoords = (el.nodes || []).map((nid) => nodes[nid]).filter(Boolean);
+          }
 
           if (rawCoords.length < 2) return;
 
-          const gType = el.tags.golf || "";
-          const nType = el.tags.natural || "";
+          const gType = (el.tags.golf || "").toLowerCase();
+          const nType = (el.tags.natural || "").toLowerCase();
+          const wType = (el.tags.water || "").toLowerCase();
+          const bType = (el.tags.basin || "").toLowerCase();
 
           if (gType === "hole") {
             candidateHoles.push({
@@ -1366,7 +1555,8 @@ let saveToNeonTimer: any = null;
           }
           if (coords.length < 4) return;
 
-          if (coords.length < 25 && (gType === "green" || gType === "bunker")) {
+          // Only smooth if vertex count is very sparse (< 8) to preserve true OSM shape
+          if (coords.length < 8 && (gType === "green" || gType === "bunker")) {
             coords = smoothPolygonCoords(coords, 1);
           }
 
@@ -1381,7 +1571,7 @@ let saveToNeonTimer: any = null;
             candidateFeatures.push({ id: `osm-fairway-${el.id}`, type: "fairway", coords, center, props: { label: "" } });
           } else if (gType === "bunker" || nType === "sand") {
             candidateFeatures.push({ id: `osm-bunker-${el.id}`, type: "bunker", coords, center, props: { label: "" } });
-          } else if (gType.includes("water") || nType === "water") {
+          } else if (gType.includes("water") || nType === "water" || Boolean(wType) || Boolean(bType)) {
             candidateFeatures.push({ id: `osm-water-${el.id}`, type: "water", coords, center, props: { label: "" } });
           }
         } else if (el.type === "node" && el.tags && el.tags.natural === "tree") {
@@ -1390,7 +1580,7 @@ let saveToNeonTimer: any = null;
             type: "tree",
             coords: [el.lon, el.lat],
             center: [el.lon, el.lat],
-            props: { label: "", elev: 0, radius: 7 }
+            props: { label: "", elev: 0, radius: 8, dx: 0, dy: 0 }
           });
         }
       });
@@ -2332,7 +2522,7 @@ let saveToNeonTimer: any = null;
           const dy = bunk.props?.dy || 0;
 
           greensideBunkersSVG += `
-            <g class="greenside-bunker">
+            <g class="greenside-bunker cursor-grab" data-id="${bunk.id}">
               ${renderMoundHachuresSVG(bScreen, 5, 7, true)}
               <path d="${bPath}" fill="#f1e6b2" stroke="#1c1917" stroke-width="1.2" />
               <text x="${(minPt.sx + dx).toFixed(1)}" y="${(minPt.sy + 3 + dy).toFixed(1)}" text-anchor="middle" class="font-tour" font-size="10" font-weight="700" fill="#1c1917" stroke="#faf8f2" stroke-width="2.2" paint-order="stroke">${minFrontDist}</text>
@@ -2676,47 +2866,64 @@ let saveToNeonTimer: any = null;
 
       // PIECEWISE DUAL-SCALE PROJECTION (StrackaLine / Tour Sherpa Golf Secret!)
       // In Full-Hole Tour Book Mode:
-      // - Top Zone (y >= yNeck): Green Complex rendered at `greenZoomRatio` (e.g. 2.3x USGA 1:480 scale)
-      // - Bottom Zone (y < yNeck): Fairway Landing Corridor condensed to fit cleanly from `syNeck` down to `820px`
-      // - Smooth cosine blend across [-16 yds, +2 yds] relative to Front of Green so the fairway neck connects seamlessly!
+      // - Top Zone (y >= yNeck): Green Complex rendered at exact USGA 1:480 scale (7.2 px/yd screen standard)
+      // - Bottom Zone (y < yNeck): Fairway Landing Corridor condensed/scrunched vertically to fit from `syNeck` down to `835px`
+      // - Smooth blend across [-16 yds, +2 yds] so the fairway neck connects seamlessly!
       const yNeck = model.frontGreenXY.y - 6; // Transition datum 6 yards short of front green edge
-      const greenSpanY = Math.max(28, model.backGreenXY.y + 8 - yNeck);
+      const greenSpanY = Math.max(28, model.backGreenXY.y + 6 - yNeck);
       const fwSpanY = Math.max(90, yNeck - plotMinY);
 
-      const topOffset = viewMode === "split" ? 285 : 28;
+      const topOffset = viewMode === "split" ? 285 : 26;
       const totalPlotHeight = viewMode === "split" ? 550 : 795;
 
-      // Base fairway scale (pixels per yard) - utilize full available vertical height
-      const availableFwHeight = (topOffset + totalPlotHeight) - 240;
-      const baseFwPxPerYard = Math.min(390 / (halfSpanX * 2), (availableFwHeight * 0.95) / fwSpanY);
+      // Base fairway scale & USGA 1:480 Green Scale
+      const usga1480GreenScale = 7.2; // 1 yard = 7.2px (3/8" per 5 yds at 96 DPI)
+      const baseFwPxPerYard = Math.min(390 / (halfSpanX * 2), 600 / fwSpanY);
       const greenPxPerYard = viewMode === "split"
         ? baseFwPxPerYard
-        : Math.min(6.2, baseFwPxPerYard * Math.max(2.1, greenZoomRatio));
+        : Math.min(7.6, Math.max(5.5, usga1480GreenScale * (greenZoomRatio / 2.3)));
 
-      // Screen Y position of the Neck transition (gives green top ~25-30% of page)
+      // Screen Y position of the Neck transition (gives green top ~26-28% of page)
       const syNeck = viewMode === "split"
         ? topOffset + greenSpanY * baseFwPxPerYard
-        : Math.min(285, Math.max(180, topOffset + greenSpanY * greenPxPerYard));
-      const actualFwPxPerYard = Math.min(baseFwPxPerYard * 1.08, (topOffset + totalPlotHeight - syNeck) / fwSpanY);
+        : Math.min(275, Math.max(205, topOffset + greenSpanY * greenPxPerYard));
+
+      // Fairway vertical compression (scrunches fairway to take up the full available lower 580px!)
+      const availableFwHeight = 835 - syNeck;
+      const actualFwPxPerYardY = Math.max(0.65, availableFwHeight / fwSpanY);
+      // Fairway lateral scale (fills page width ~360px comfortably, matching Photos 1 & 2)
+      const actualFwPxPerYardX = Math.min(4.5, 360 / (halfSpanX * 2));
+      const actualFwPxPerYard = actualFwPxPerYardY;
+
+      // Rigid Euclidean transform for the Green Complex (zero tearing, physically exact)
+      function greenYardsToPage(ptYards) {
+        const panDx = (holeData.meta && holeData.meta.pagePan && holeData.meta.pagePan.dx) || 0;
+        const panDy = (holeData.meta && holeData.meta.pagePan && holeData.meta.pagePan.dy) || 0;
+        return {
+          sx: 270 + (ptYards.x - model.greenCenterXY.x) * greenPxPerYard + panDx,
+          sy: syNeck - (ptYards.y - yNeck) * greenPxPerYard + panDy
+        };
+      }
 
       function yardsToPage(ptYards) {
         const dyFromNeck = ptYards.y - yNeck;
-        // Smooth hermite blend factor w in [0, 1] across the 18-yard approach collar [-14, +4]
-        const t = Math.max(0, Math.min(1, (dyFromNeck + 14) / 18));
-        const smoothW = t * t * (3 - 2 * t);
-
-        const localScaleX = actualFwPxPerYard + (greenPxPerYard - actualFwPxPerYard) * smoothW;
-        const centerRefX = midX * (1 - smoothW) + model.greenCenterXY.x * smoothW;
-
-        let sy;
-        if (dyFromNeck >= 0) {
-          sy = syNeck - dyFromNeck * greenPxPerYard;
-        } else {
-          sy = syNeck - dyFromNeck * actualFwPxPerYard;
-        }
-
         const panDx = (holeData.meta && holeData.meta.pagePan && holeData.meta.pagePan.dx) || 0;
         const panDy = (holeData.meta && holeData.meta.pagePan && holeData.meta.pagePan.dy) || 0;
+
+        if (dyFromNeck >= 0) {
+          return {
+            sx: 270 + (ptYards.x - model.greenCenterXY.x) * greenPxPerYard + panDx,
+            sy: syNeck - dyFromNeck * greenPxPerYard + panDy
+          };
+        }
+
+        // Smooth hermite blend factor across the approach collar [-16, +2]
+        const t = Math.max(0, Math.min(1, (dyFromNeck + 16) / 18));
+        const smoothW = t * t * (3 - 2 * t);
+
+        const localScaleX = actualFwPxPerYardX + (greenPxPerYard - actualFwPxPerYardX) * smoothW;
+        const centerRefX = midX * (1 - smoothW) + model.greenCenterXY.x * smoothW;
+        const sy = syNeck - dyFromNeck * actualFwPxPerYardY;
 
         return {
           sx: 270 + (ptYards.x - centerRefX) * localScaleX + panDx,
@@ -2880,15 +3087,16 @@ let saveToNeonTimer: any = null;
         .forEach((tr) => {
           const pYards = model.projectToHoleYards(tr.coords);
           const sPt = yardsToPage(pYards);
-          const radPx = (tr.props?.radius || 8) * actualFwPxPerYard;
+          const radPx = (tr.props?.radius || 8) * actualFwPxPerYardX;
           const frontYds = model.yardsToFrontGreen(tr.coords);
           const carryYds = model.yardsFromTee(tr.coords);
           const dx = tr.props?.dx || 0;
           const dy = tr.props?.dy || 0;
+          const labelX = (pYards.x < 0 ? sPt.sx - radPx * 0.55 : sPt.sx + radPx * 0.55) + dx;
 
           svgContent += `
             <g class="tree-group cursor-grab" data-id="${tr.id}">
-              ${renderTreeCanopySVG(sPt.sx, sPt.sy, radPx)}
+              ${renderTreeCanopySVG(sPt.sx + dx, sPt.sy + dy, radPx)}
               ${renderStackedYardageSVG(
                 labelX,
                 sPt.sy + 4 + dy,
@@ -2942,7 +3150,7 @@ let saveToNeonTimer: any = null;
           const dy = bunk.props?.dy || 0;
 
           svgContent += `
-            <g class="fairway-bunker">
+            <g class="fairway-bunker cursor-grab" data-id="${bunk.id}">
               ${renderMoundHachuresSVG(ptsScreen, 5.5, 7, true)}
               <path d="${d}" fill="#f1e6b2" stroke="#1c1917" stroke-width="1.25" />
               ${renderStackedYardageSVG(backScreen.sx + sideSign * 22 + dx, backScreen.sy + 4 + dy, backFrontYds, backCarryYds)}
@@ -2951,8 +3159,11 @@ let saveToNeonTimer: any = null;
           `;
         });
 
-      // 6. UNIFIED DUAL-SCALE GREEN COMPLEX (Rendered at enlarged 1:480 scale at top of hole!)
-      svgContent += renderGreenWithProjection(model, yardsToPage, "green-clip-unified", false);
+      // Close fairway corridor layer BEFORE green complex so greenside bunkers & green are NEVER clipped!
+      svgContent += `</g>`;
+
+      // 6. UNIFIED DUAL-SCALE GREEN COMPLEX (Rendered at exact USGA 1:480 scale at top of hole)
+      svgContent += renderGreenWithProjection(model, greenYardsToPage, "green-clip-unified", false);
 
       // 7. TARGETS, AIM CROSSES, SPRINKLERS & FAIRWAY PINCH RINGS
       holeData.features
@@ -3003,8 +3214,6 @@ let saveToNeonTimer: any = null;
             </g>
           `;
         });
-
-      svgContent += `</g>`;
 
       // 8. DUAL COMPASS ROSES (Top Green Approach Compass + Bottom Tee Box Compass, matching Photos 1 & 2!)
       const teeFeat = holeData.features.find((f) => f.type === "tee");
@@ -3065,7 +3274,7 @@ let saveToNeonTimer: any = null;
     if (svgEl) {
       svgEl.addEventListener("pointerdown", (e: PointerEvent) => {
         const target = e.target as HTMLElement | SVGElement;
-        const targetGroup = target.closest(".target-point, .tree-group") as SVGElement;
+        const targetGroup = target.closest(".target-point, .tree-group, .fairway-bunker, .greenside-bunker") as SVGElement;
         const pt = getSvgPoint(svgEl, e);
 
         if (targetGroup && targetGroup.dataset.id) {

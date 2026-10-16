@@ -16,6 +16,8 @@ export interface MatchedHole {
   green_polygon: any;
   fairways_geojson: any[];
   bunkers_geojson: any[];
+  water_geojson?: any[];
+  features?: any[];
 }
 
 function normalizeBearing(deg: number): number {
@@ -32,11 +34,18 @@ export function matchOsmHoles(osmData: any, courseNameFallback: string) {
   const fairwayPolygons: Array<{ id: string; coords: number[][]; center: [number, number]; polygon: any }> = [];
   const bunkerPolygons: Array<{ id: string; coords: number[][]; center: [number, number]; polygon: any }> = [];
   const waterPolygons: Array<{ id: string; coords: number[][]; center: [number, number]; polygon: any }> = [];
+  const treeNodes: Array<{ id: string; coords: [number, number] }> = [];
 
   for (const el of osmData.elements) {
-    if (el.type === 'way' && Array.isArray(el.geometry) && el.geometry.length >= 2) {
+    if (el.type === 'node' && el.tags?.natural === 'tree' && typeof el.lon === 'number' && typeof el.lat === 'number') {
+      treeNodes.push({ id: `osm-tree-${el.id}`, coords: [el.lon, el.lat] });
+      continue;
+    }
+
+    if ((el.type === 'way' || el.type === 'relation') && Array.isArray(el.geometry) && el.geometry.length >= 2) {
       const gType = (el.tags?.golf || '').toLowerCase();
       const nType = (el.tags?.natural || '').toLowerCase();
+      const wType = (el.tags?.water || '').toLowerCase();
       const coords = el.geometry.map((pt: any) => [pt.lon, pt.lat]);
 
       if (gType === 'hole') {
@@ -59,7 +68,7 @@ export function matchOsmHoles(osmData: any, courseNameFallback: string) {
               fairwayPolygons.push({ id: `osm-fairway-${el.id}`, coords: ring, center, polygon: poly });
             } else if (gType === 'bunker' || nType === 'sand') {
               bunkerPolygons.push({ id: `osm-bunker-${el.id}`, coords: ring, center, polygon: poly });
-            } else if (gType.includes('water') || nType === 'water') {
+            } else if (gType.includes('water') || nType === 'water' || Boolean(wType)) {
               waterPolygons.push({ id: `osm-water-${el.id}`, coords: ring, center, polygon: poly });
             }
           } catch {}
@@ -164,8 +173,12 @@ export function matchOsmHoles(osmData: any, courseNameFallback: string) {
       const holeFairways: any[] = [];
       for (const fw of fairwayPolygons) {
         try {
-          const distToLineM = turf.pointToLineDistance(turf.point(fw.center), clLine, { units: 'meters' });
-          if (distToLineM <= 55) {
+          let minM = Infinity;
+          for (const c of fw.coords) {
+            const d = turf.pointToLineDistance(turf.point(c), clLine, { units: 'meters' });
+            if (d < minM) minM = d;
+          }
+          if (minM <= 35 || turf.booleanIntersects(fw.polygon, clLine)) {
             holeFairways.push(fw.polygon);
           }
         } catch {}
@@ -174,9 +187,101 @@ export function matchOsmHoles(osmData: any, courseNameFallback: string) {
       const holeBunkers: any[] = [];
       for (const b of bunkerPolygons) {
         try {
-          const distToLineM = turf.pointToLineDistance(turf.point(b.center), clLine, { units: 'meters' });
-          if (distToLineM <= 60) {
+          let minM = Infinity;
+          let minGreenM = Infinity;
+          for (const c of b.coords) {
+            const d = turf.pointToLineDistance(turf.point(c), clLine, { units: 'meters' });
+            if (d < minM) minM = d;
+            const dg = turf.distance(turf.point(c), pinPt, { units: 'meters' });
+            if (dg < minGreenM) minGreenM = dg;
+          }
+          if (minM <= 50 || minGreenM <= 45) {
             holeBunkers.push(b.polygon);
+          }
+        } catch {}
+      }
+
+      const holeWater: any[] = [];
+      for (const w of waterPolygons) {
+        try {
+          let minM = Infinity;
+          let minGreenM = Infinity;
+          for (const c of w.coords) {
+            const d = turf.pointToLineDistance(turf.point(c), clLine, { units: 'meters' });
+            if (d < minM) minM = d;
+            const dg = turf.distance(turf.point(c), pinPt, { units: 'meters' });
+            if (dg < minGreenM) minGreenM = dg;
+          }
+          if (minM <= 65 || minGreenM <= 55) {
+            holeWater.push(w.polygon);
+          }
+        } catch {}
+      }
+
+      const holeFeatures: any[] = [];
+      // 1. Tee
+      holeFeatures.push({
+        id: `tee-${hNum}`,
+        type: 'tee',
+        coords: [tee_lon, tee_lat],
+        props: { label: 'Back Tee', elev: 0 }
+      });
+      // 2. Centerline
+      holeFeatures.push({
+        id: `cl-${hNum}`,
+        type: 'centerline',
+        coords,
+        props: {}
+      });
+      // 3. Green
+      if (green_polygon) {
+        holeFeatures.push({
+          id: `green-${hNum}`,
+          type: 'green',
+          coords: bestGreen ? bestGreen.coords : green_polygon.coordinates[0],
+          props: {}
+        });
+      }
+      // 4. Fairways
+      holeFairways.forEach((fwPoly, idx) => {
+        holeFeatures.push({
+          id: `fw-${hNum}-${idx}`,
+          type: 'fairway',
+          coords: fwPoly.geometry?.coordinates?.[0] || fwPoly.coordinates?.[0],
+          props: {}
+        });
+      });
+      // 5. Bunkers
+      holeBunkers.forEach((bkPoly, idx) => {
+        holeFeatures.push({
+          id: `bunk-${hNum}-${idx}`,
+          type: 'bunker',
+          coords: bkPoly.geometry?.coordinates?.[0] || bkPoly.coordinates?.[0],
+          props: {}
+        });
+      });
+      // 6. Water
+      holeWater.forEach((wtPoly, idx) => {
+        holeFeatures.push({
+          id: `water-${hNum}-${idx}`,
+          type: 'water',
+          coords: wtPoly.geometry?.coordinates?.[0] || wtPoly.coordinates?.[0],
+          props: {}
+        });
+      });
+      // 7. Trees
+      for (const tr of treeNodes) {
+        try {
+          const pt = turf.point(tr.coords);
+          const d = turf.pointToLineDistance(pt, clLine, { units: 'meters' });
+          const dg = turf.distance(pt, pinPt, { units: 'meters' });
+          if (d <= 38 || dg <= 32) {
+            holeFeatures.push({
+              id: tr.id,
+              type: 'tree',
+              coords: tr.coords,
+              props: { label: '', elev: 0, radius: 8, dx: 0, dy: 0 }
+            });
           }
         } catch {}
       }
@@ -196,7 +301,9 @@ export function matchOsmHoles(osmData: any, courseNameFallback: string) {
         centerline: coords,
         green_polygon,
         fairways_geojson: holeFairways,
-        bunkers_geojson: holeBunkers
+        bunkers_geojson: holeBunkers,
+        water_geojson: holeWater,
+        features: holeFeatures
       });
     }
   }
