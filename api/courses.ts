@@ -16,18 +16,112 @@ export default async function handler(req: any, res: any) {
     if (req.method === 'GET') {
       const url = new URL(req.url, `http://${req.headers?.host || 'localhost'}`);
       const courseId = url.searchParams.get('id') || url.searchParams.get('course_id') || req.query?.id;
+      const syncOsm = url.searchParams.get('sync_osm') === 'true' || req.query?.sync_osm === 'true';
 
       if (courseId) {
-        // Fetch single course and all 18 ordered holes
+        // Fetch single course
         const courseRows = await sql`SELECT * FROM courses WHERE id = ${courseId};`;
         if (courseRows.length === 0) {
           return res.status(404).json({ error: 'Course not found' });
         }
-        const holes = await sql`
+        const course = courseRows[0];
+
+        let holes = await sql`
           SELECT * FROM course_holes 
           WHERE course_id = ${courseId} 
           ORDER BY hole_number ASC;
         `;
+
+        // If holes count is 0, or user requested sync_osm, fetch from Overpass and persist all 18 holes
+        if ((holes.length === 0 || syncOsm) && course.center_lat && course.center_lon) {
+          try {
+            const lat = course.center_lat;
+            const lon = course.center_lon;
+            const query = `[out:json][timeout:25];(
+              way["golf"~"hole|green|fairway|bunker|water_hazard|lateral_water_hazard|tee|cartpath"](around:2000,${lat},${lon});
+              relation["golf"~"hole|green|fairway|bunker|water_hazard|lateral_water_hazard|green"](around:2000,${lat},${lon});
+              way["natural"~"water|wood"](around:2000,${lat},${lon});
+              relation["natural"="water"](around:2000,${lat},${lon});
+              way["water"](around:2000,${lat},${lon});
+              way["waterway"](around:2000,${lat},${lon});
+              way["highway"="path"](around:2000,${lat},${lon});
+              node["natural"="tree"](around:1200,${lat},${lon});
+            );out geom;`;
+
+            const mirrors = [
+              'https://overpass-api.de/api/interpreter',
+              'https://lz4.overpass-api.de/api/interpreter',
+              'https://overpass.kumi.systems/api/interpreter'
+            ];
+
+            let osmData: any = null;
+            for (const mirror of mirrors) {
+              try {
+                const resp = await fetch(mirror, {
+                  method: 'POST',
+                  headers: {
+                    'User-Agent': 'FSGCourseBook/3.0 (contact@fullstackgolf.com)',
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                  },
+                  body: 'data=' + encodeURIComponent(query)
+                });
+                if (resp.ok) {
+                  osmData = await resp.json();
+                  if (osmData && osmData.elements && osmData.elements.length > 0) break;
+                }
+              } catch (e) {}
+            }
+
+            if (osmData) {
+              const matched = matchOsmHoles(osmData, course.name);
+              const savedHoles = [];
+              for (const h of matched.holes) {
+                const hNum = h.hole_number;
+                const holeRow = await sql`
+                  INSERT INTO course_holes (
+                    course_id, hole_number, par, handicap, yardage,
+                    tee_lat, tee_lon, pivot_lat, pivot_lon,
+                    green_lat, green_lon, hole_bearing, approach_bearing,
+                    green_polygon, bunkers_geojson, fairways_geojson,
+                    features, lidar_grid
+                  ) VALUES (
+                    ${course.id}, ${hNum}, ${h.par || 4}, ${null}, ${h.yardage || 350},
+                    ${h.tee_lat}, ${h.tee_lon}, ${h.pivot_lat || null}, ${h.pivot_lon || null},
+                    ${h.green_lat}, ${h.green_lon}, ${h.hole_bearing || 0}, ${h.approach_bearing || 0},
+                    ${JSON.stringify(h.green_polygon || null)}::jsonb,
+                    ${JSON.stringify(h.bunkers_geojson || [])}::jsonb,
+                    ${JSON.stringify(h.fairways_geojson || [])}::jsonb,
+                    ${JSON.stringify(h.features || [])}::jsonb,
+                    ${null}
+                  )
+                  ON CONFLICT (course_id, hole_number) DO UPDATE
+                  SET par = EXCLUDED.par,
+                      yardage = EXCLUDED.yardage,
+                      tee_lat = EXCLUDED.tee_lat,
+                      tee_lon = EXCLUDED.tee_lon,
+                      pivot_lat = EXCLUDED.pivot_lat,
+                      pivot_lon = EXCLUDED.pivot_lon,
+                      green_lat = EXCLUDED.green_lat,
+                      green_lon = EXCLUDED.green_lon,
+                      hole_bearing = EXCLUDED.hole_bearing,
+                      approach_bearing = EXCLUDED.approach_bearing,
+                      green_polygon = EXCLUDED.green_polygon,
+                      bunkers_geojson = EXCLUDED.bunkers_geojson,
+                      fairways_geojson = EXCLUDED.fairways_geojson,
+                      features = EXCLUDED.features
+                  RETURNING *;
+                `;
+                savedHoles.push(holeRow[0]);
+              }
+              if (savedHoles.length > 0) {
+                holes = savedHoles;
+              }
+            }
+          } catch (err) {
+            console.warn('Overpass fetch in /api/courses notice:', err);
+          }
+        }
+
         const yardageBooks = await sql`
           SELECT * FROM yardage_books 
           WHERE course_id = ${courseId} 
@@ -35,18 +129,18 @@ export default async function handler(req: any, res: any) {
         `;
 
         return res.status(200).json({
-          course: courseRows[0],
+          course,
           holes,
           yardage_book: yardageBooks[0] || null
         });
       } else {
-        // List all courses
+        // Fast listing of all courses in Neon
         const courses = await sql`
           SELECT c.*, COUNT(ch.id)::int as holes_count
           FROM courses c
           LEFT JOIN course_holes ch ON c.id = ch.course_id
           GROUP BY c.id
-          ORDER BY c.created_at DESC;
+          ORDER BY c.name ASC;
         `;
         return res.status(200).json({ courses });
       }
@@ -65,22 +159,10 @@ export default async function handler(req: any, res: any) {
       let finalLon = inputLon;
 
       if (osmData && osmData.elements) {
-        // Run Phase 5 spatial join matcher
         const matched = matchOsmHoles(osmData, name);
         holesToSave = matched.holes;
         finalLat = finalLat || matched.center_lat;
         finalLon = finalLon || matched.center_lon;
-
-        // If no explicit golf=hole ways found, use green fallback
-        if (holesToSave.length === 0 && matched.unmatchedGreens.length > 0) {
-          holesToSave = buildFallbackHolesFromGreens(
-            matched.unmatchedGreens.map((g: any) => ({
-              center: g.geometry.coordinates[0][0],
-              polygon: g
-            })),
-            name
-          );
-        }
       } else if (Array.isArray(manualHoles) && manualHoles.length > 0) {
         holesToSave = manualHoles;
       }

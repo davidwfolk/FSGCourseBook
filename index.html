@@ -158,6 +158,12 @@
         </div>
       </div>
 
+      <!-- Saved Courses in Neon Dropdown -->
+      <select id="saved-courses-select" title="Saved Courses in Neon Postgres"
+        class="bg-slate-800 border border-emerald-500/40 text-xs text-emerald-300 font-semibold rounded-lg px-2.5 py-2 focus:outline-none focus:border-emerald-400 cursor-pointer shrink-0 max-w-[190px] truncate">
+        <option value="">Saved Courses (Neon)...</option>
+      </select>
+
       <!-- Persistent 18-Hole Course Switcher -->
       <select id="course-hole-select" title="Switch between Holes 1–18 (All edits auto-save per hole!)"
         class="bg-slate-800 border border-emerald-500/60 text-xs text-emerald-300 font-semibold rounded-lg px-2 py-2 focus:outline-none focus:border-emerald-400 cursor-pointer shrink-0">
@@ -189,11 +195,11 @@
         <option value="empty">Blank / Custom</option>
       </select>
 
-      <!-- Overpass OSM Importer -->
-      <button id="osm-import-btn" title="Pull OSM Hole Vectors in View (or cache all 18 holes of the course)"
+      <!-- Re-Sync OSM Button -->
+      <button id="resync-osm-btn" title="Re-Sync course vectors & all 18 holes from OpenStreetMap"
         class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium px-2.5 py-2 rounded-lg flex items-center gap-1 shadow-sm transition shrink-0">
-        <i data-lucide="radar" class="w-3.5 h-3.5"></i>
-        <span class="hidden md:inline">Pull OSM</span>
+        <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+        <span class="hidden md:inline">Re-Sync OSM</span>
       </button>
 
       <!-- Auto-Populate Fairway Yardage Dots -->
@@ -433,12 +439,12 @@
       <div
         class="bg-slate-900/90 border-b border-slate-800 px-3 py-2 flex flex-wrap items-center justify-between gap-1.5 shrink-0">
 
-        <!-- Hole & Dual-Scale Projection Controls -->
+        <!-- Hole Metadata Controls -->
         <div class="flex items-center gap-1.5 flex-wrap">
           <div class="flex items-center bg-slate-800 rounded-lg border border-slate-700 px-2 py-1">
             <span class="text-[9px] uppercase text-slate-400 mr-1 font-semibold">Course</span>
             <input id="meta-course-name" type="text" value="Lakeview"
-              class="w-20 bg-transparent text-xs font-bold text-white focus:outline-none" />
+              class="w-24 bg-transparent text-xs font-bold text-white focus:outline-none truncate" />
           </div>
           <div class="flex items-center bg-slate-800 rounded-lg border border-slate-700 px-1.5 py-1">
             <span class="text-[9px] uppercase text-slate-400 mr-1 font-semibold">Hole</span>
@@ -450,79 +456,75 @@
             <input id="meta-hole-par" type="number" min="3" max="6" value="4"
               class="w-5 bg-transparent text-xs font-bold text-white focus:outline-none text-center" />
           </div>
-          <div class="flex items-center bg-slate-800 rounded-lg border border-slate-700 px-1.5 py-1"
-            title="Green 1:480 Enlargement Ratio relative to Condensed Fairway (2.4x = Tour Standard)">
-            <span class="text-[9px] uppercase text-emerald-400 mr-1 font-semibold">Green Zoom</span>
-            <input id="meta-green-zoom" type="number" step="0.2" min="1.0" max="3.6" value="2.3"
-              class="w-9 bg-transparent text-xs font-bold text-emerald-300 focus:outline-none text-center" />
-            <span class="text-[9px] text-slate-400">x</span>
-          </div>
-          <div class="flex items-center bg-slate-800 rounded-lg border border-slate-700 px-1.5 py-1"
-            title="Auto-Cutout / OB Corridor Distance outside Fairway Edge (Yards)">
-            <span class="text-[9px] uppercase text-fuchsia-400 mr-1 font-semibold">Cutout</span>
-            <input id="meta-corridor-yds" type="number" step="5" min="10" max="50" value="20"
-              class="w-8 bg-transparent text-xs font-bold text-fuchsia-300 focus:outline-none text-center" />
-            <span class="text-[9px] text-slate-400">y</span>
-          </div>
-          <div class="flex items-center bg-slate-800 rounded-lg border border-slate-700 px-1.5 py-1"
-            title="Synthetic Fallback Slope %">
-            <span class="text-[9px] uppercase text-slate-400 mr-1 font-semibold">Slope</span>
-            <input id="meta-green-slope-pct" type="number" step="0.5" min="0.5" max="8" value="2.8"
-              class="w-8 bg-transparent text-xs font-bold text-amber-400 focus:outline-none text-center" />
-            <input id="meta-green-slope-dir" type="hidden" value="215" />
+          <div class="hidden sm:flex items-center bg-slate-800/80 rounded-lg border border-slate-700/80 px-2 py-1 text-[11px] text-slate-300 gap-1.5 font-mono-code">
+            <span class="text-emerald-400 font-bold" id="spread-yardage-pill">364y</span>
+            <span class="text-slate-500">|</span>
+            <span class="text-sky-300" id="spread-bearing-pill">182° Brg</span>
           </div>
         </div>
 
-        <!-- View Mode & Toggles -->
+        <!-- View Controls & Layer Toggles -->
         <div class="flex items-center gap-1">
-          <div class="inline-flex rounded-lg bg-slate-800 p-0.5 border border-slate-700">
-            <button data-view="full"
-              class="view-mode-btn bg-emerald-600 text-white text-[11px] font-semibold px-2 py-1 rounded-md transition"
-              title="Dual-Scale Tour Book Page (1:480 Green at Top + Condensed Fairway Landing Zone)">
-              Tour Book
-            </button>
-            <button data-view="split"
-              class="view-mode-btn text-slate-300 hover:text-white text-[11px] font-semibold px-2 py-1 rounded-md transition">
-              Split
-            </button>
-            <button data-view="green"
-              class="view-mode-btn text-slate-300 hover:text-white text-[11px] font-semibold px-2 py-1 rounded-md transition">
-              Green Grid
-            </button>
-            <button data-view="usga"
-              class="view-mode-btn text-slate-300 hover:text-white text-[11px] font-semibold px-2 py-1 rounded-md transition"
-              title="USGA 1:480 Scale Green Book with Dense 2-Yard Arrows, 0.5ft Contours & 10-Band Legend">
-              USGA 1:480
-            </button>
-          </div>
-
-          <button id="toggle-corridor-btn" title="Toggle Auto 20-Yard Fairway Cutout / OB Border"
-            class="p-1.5 rounded-lg bg-slate-800 border border-fuchsia-500/50 text-fuchsia-400 hover:bg-slate-700 transition text-xs">
-            <i data-lucide="scissors" class="w-3.5 h-3.5"></i>
+          <button id="toggle-satellite-btn" title="Toggle Esri Satellite Background"
+            class="p-1.5 rounded-lg bg-slate-800 border border-emerald-500/50 text-emerald-400 hover:bg-slate-700 transition text-xs flex items-center gap-1">
+            <i data-lucide="layers" class="w-3.5 h-3.5"></i>
+            <span class="text-[10px] hidden xl:inline">Satellite</span>
           </button>
-          <button id="toggle-ladders-btn" title="Toggle Side Margin Yardage Ladders"
-            class="p-1.5 rounded-lg bg-slate-800 border border-emerald-500/50 text-emerald-400 hover:bg-slate-700 transition text-xs">
-            <i data-lucide="ruler" class="w-3.5 h-3.5"></i>
+          <button id="toggle-arcs-btn" title="Toggle Distance Arcs (100, 150, 200, 250y)"
+            class="p-1.5 rounded-lg bg-slate-800 border border-amber-500/50 text-amber-400 hover:bg-slate-700 transition text-xs flex items-center gap-1">
+            <i data-lucide="target" class="w-3.5 h-3.5"></i>
+            <span class="text-[10px] hidden xl:inline">Arcs</span>
           </button>
-          <button id="toggle-hachures-btn" title="Toggle Bunker & Green Bank Hachures"
-            class="p-1.5 rounded-lg bg-slate-800 border border-emerald-500/50 text-emerald-400 hover:bg-slate-700 transition text-xs">
-            <i data-lucide="mountain" class="w-3.5 h-3.5"></i>
+          <button id="toggle-contours-btn" title="Toggle 0.25ft Topographic Contours"
+            class="p-1.5 rounded-lg bg-slate-800 border border-sky-500/50 text-sky-400 hover:bg-slate-700 transition text-xs flex items-center gap-1">
+            <i data-lucide="activity" class="w-3.5 h-3.5"></i>
+            <span class="text-[10px] hidden xl:inline">Contours</span>
           </button>
-          <button id="reset-page-pan-btn" title="Center Hole & Reset Page Layout"
+          <button id="toggle-arrows-btn" title="Toggle Break / Slope Direction Arrows"
+            class="p-1.5 rounded-lg bg-slate-800 border border-teal-500/50 text-teal-300 hover:bg-slate-700 transition text-xs flex items-center gap-1">
+            <i data-lucide="arrow-down-right" class="w-3.5 h-3.5"></i>
+            <span class="text-[10px] hidden xl:inline">Slope</span>
+          </button>
+          <button id="reset-page-pan-btn" title="Re-Center & Re-Render Both Spreads"
             class="p-1.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-400 hover:text-white hover:bg-slate-700 transition text-xs">
             <i data-lucide="crosshair" class="w-3.5 h-3.5"></i>
           </button>
         </div>
       </div>
 
-      <!-- Yardage Book Page Canvas Wrapper -->
-      <div
-        class="flex-1 overflow-auto p-4 sm:p-6 flex items-start justify-center bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:16px_16px]">
-        <div id="svg-print-container"
-          class="bg-[#faf8f2] rounded-sm shadow-[0_20px_60px_rgba(0,0,0,0.75)] border border-stone-300 transition-all duration-200 max-w-full">
-          <svg id="yardage-book-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 540 940"
-            class="w-full h-auto max-h-[calc(100vh-145px)] block select-none"></svg>
+      <!-- StrackaLine Combo 2-Spread Booklet Canvas Wrapper -->
+      <div id="spreads-container"
+        class="flex-1 overflow-auto p-4 flex flex-wrap items-start justify-center gap-6 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:16px_16px]">
+        
+        <!-- SPREAD 1: FULL HOLE SATELLITE BOOK (3.75" x 10.5") -->
+        <div class="flex flex-col items-center shrink-0">
+          <div class="text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            Spread 1: Full Hole Satellite Book
+          </div>
+          <div id="spread1-wrapper" class="rounded-sm shadow-[0_20px_60px_rgba(0,0,0,0.85)] border border-slate-700 overflow-hidden bg-slate-950">
+            <canvas id="hole-spread-canvas" width="540" height="1512"
+              class="w-[260px] md:w-[280px] xl:w-[320px] 2xl:w-[350px] h-auto block select-none bg-black"></canvas>
+          </div>
         </div>
+
+        <!-- SPREAD 2: 3-PANEL 1:480 GREEN COMPLEX BOOK (3.75" x 10.5") -->
+        <div class="flex flex-col items-center shrink-0">
+          <div class="text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-sky-400 animate-pulse"></span>
+            Spread 2: 3-Panel 1:480 Green Book
+          </div>
+          <div id="spread2-wrapper" class="rounded-sm shadow-[0_20px_60px_rgba(0,0,0,0.85)] border border-slate-700 overflow-hidden bg-white">
+            <canvas id="green-spread-canvas" width="540" height="1512"
+              class="w-[260px] md:w-[280px] xl:w-[320px] 2xl:w-[350px] h-auto block select-none bg-white"></canvas>
+          </div>
+        </div>
+
+        <!-- Hidden legacy SVG container to preserve export compatibility -->
+        <div id="svg-print-container" class="hidden">
+          <svg id="yardage-book-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 540 940"></svg>
+        </div>
+
       </div>
     </div>
 

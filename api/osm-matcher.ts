@@ -65,7 +65,7 @@ export function matchOsmHoles(osmData: any, courseNameFallback: string) {
             const center = turf.centroid(poly).geometry.coordinates as [number, number];
 
             if (gType === 'green') {
-              greenPolygons.push({ id: `osm-green-${el.id}`, coords: ring, center, polygon: poly });
+              greenPolygons.push({ id: `osm-green-${el.id}`, coords: ring, center, polygon: poly, used: false });
             } else if (gType === 'fairway') {
               fairwayPolygons.push({ id: `osm-fairway-${el.id}`, coords: ring, center, polygon: poly });
             } else if (gType === 'bunker' || nType === 'sand') {
@@ -110,7 +110,6 @@ export function matchOsmHoles(osmData: any, courseNameFallback: string) {
     .filter(h => h.holeNum !== null && h.holeNum >= 1 && h.holeNum <= 18)
     .sort((a, b) => (a.holeNum as number) - (b.holeNum as number));
 
-  const matchedHoles: MatchedHole[] = [];
   const uniqueHolesMap = new Map<number, typeof sortedHoleWays[0]>();
   for (const h of sortedHoleWays) {
     const num = h.holeNum as number;
@@ -124,22 +123,35 @@ export function matchOsmHoles(osmData: any, courseNameFallback: string) {
     }
   }
 
-  if (uniqueHolesMap.size > 0) {
-    const holeNums = Array.from(uniqueHolesMap.keys()).sort((a, b) => a - b);
+  const matchedHoles: MatchedHole[] = [];
 
-    for (const hNum of holeNums) {
+  // ALWAYS return an array of exactly 18 hole objects (hole_number: 1 through 18)
+  for (let hNum = 1; hNum <= 18; hNum++) {
+    let coords: number[][] = [];
+    let par = 4;
+    let green_polygon: any = null;
+    let tee_lon = 0;
+    let tee_lat = 0;
+    let green_lon = 0;
+    let green_lat = 0;
+    let pivot_lon: number | null = null;
+    let pivot_lat: number | null = null;
+
+    if (uniqueHolesMap.has(hNum)) {
       const holeWay = uniqueHolesMap.get(hNum)!;
-      const coords = holeWay.coords;
+      coords = holeWay.coords;
+      par = holeWay.par || 4;
+
       const teeNode = coords[0];
       const greenPinNode = coords[coords.length - 1];
-      const pivotNode = coords.length >= 3 ? coords[coords.length - 2] : coords[0];
+      const pivotNode = coords.length >= 3 ? coords[Math.floor(coords.length / 2)] : coords[0];
 
-      const tee_lon = teeNode[0];
-      const tee_lat = teeNode[1];
-      let green_lon = greenPinNode[0];
-      let green_lat = greenPinNode[1];
-      const pivot_lon = coords.length >= 3 ? pivotNode[0] : null;
-      const pivot_lat = coords.length >= 3 ? pivotNode[1] : null;
+      tee_lon = teeNode[0];
+      tee_lat = teeNode[1];
+      green_lon = greenPinNode[0];
+      green_lat = greenPinNode[1];
+      pivot_lon = coords.length >= 3 ? pivotNode[0] : null;
+      pivot_lat = coords.length >= 3 ? pivotNode[1] : null;
 
       const pinPt = turf.point([green_lon, green_lat]);
       let bestGreen: typeof greenPolygons[0] | null = null;
@@ -149,187 +161,225 @@ export function matchOsmHoles(osmData: any, courseNameFallback: string) {
         if (green.used) continue;
         const gCenterPt = turf.point(green.center);
         const distM = turf.distance(pinPt, gCenterPt, { units: 'meters' });
-        if (distM < minGreenDist && distM <= 65) {
+        if (distM < minGreenDist && distM <= 45) {
           minGreenDist = distM;
           bestGreen = green;
         }
       }
 
-      let green_polygon: any = null;
       if (bestGreen) {
         bestGreen.used = true;
         green_polygon = bestGreen.polygon;
         green_lon = bestGreen.center[0];
         green_lat = bestGreen.center[1];
       }
+    } else {
+      // Missing hole number: Find next unmatched green polygon or default placement
+      const unusedGreens = greenPolygons.filter(g => !g.used);
+      if (unusedGreens.length > 0) {
+        const bestGreen = unusedGreens[0];
+        bestGreen.used = true;
+        green_polygon = bestGreen.polygon;
+        green_lon = bestGreen.center[0];
+        green_lat = bestGreen.center[1];
 
-      const hole_bearing = normalizeBearing(
-        turf.bearing(turf.point([tee_lon, tee_lat]), turf.point([green_lon, green_lat]))
-      );
+        // Place default tee 350 yards due West/South of green (225° heading)
+        const teePt = turf.destination(turf.point([green_lon, green_lat]), 350 * 0.9144, 225, { units: 'meters' });
+        tee_lon = teePt.geometry.coordinates[0];
+        tee_lat = teePt.geometry.coordinates[1];
+        coords = [
+          [tee_lon, tee_lat],
+          [green_lon, green_lat]
+        ];
+      } else {
+        // Fallback: place hole in radial orbit around course center
+        const angleDeg = (hNum * 20) % 360;
+        const distM = (220 + (hNum % 6) * 35) * 0.9144;
+        const gPt = turf.destination(turf.point([center_lon, center_lat]), distM, angleDeg, { units: 'meters' });
+        green_lon = gPt.geometry.coordinates[0];
+        green_lat = gPt.geometry.coordinates[1];
 
-      const approach_bearing = (pivot_lon !== null && pivot_lat !== null)
-        ? normalizeBearing(turf.bearing(turf.point([pivot_lon, pivot_lat]), turf.point([green_lon, green_lat])))
-        : hole_bearing;
-
-      const clLine = turf.lineString(coords);
-      const yardage = Math.round(turf.length(clLine, { units: 'meters' }) * 1.0936133);
-
-      const holeFairways: any[] = [];
-      for (const fw of fairwayPolygons) {
-        try {
-          let minM = Infinity;
-          for (const c of fw.coords) {
-            const d = turf.pointToLineDistance(turf.point(c), clLine, { units: 'meters' });
-            if (d < minM) minM = d;
-          }
-          if (minM <= 50 || turf.booleanIntersects(fw.polygon, clLine)) {
-            holeFairways.push(fw.polygon);
-          }
-        } catch {}
+        const tPt = turf.destination(gPt, 350 * 0.9144, (angleDeg + 180) % 360, { units: 'meters' });
+        tee_lon = tPt.geometry.coordinates[0];
+        tee_lat = tPt.geometry.coordinates[1];
+        coords = [
+          [tee_lon, tee_lat],
+          [green_lon, green_lat]
+        ];
       }
+    }
 
-      const holeBunkers: any[] = [];
-      for (const b of bunkerPolygons) {
-        try {
-          let minM = Infinity;
-          let minGreenM = Infinity;
-          for (const c of b.coords) {
-            const d = turf.pointToLineDistance(turf.point(c), clLine, { units: 'meters' });
-            if (d < minM) minM = d;
-            const dg = turf.distance(turf.point(c), pinPt, { units: 'meters' });
-            if (dg < minGreenM) minGreenM = dg;
-          }
-          if (minM <= 100 || minGreenM <= 65) {
-            holeBunkers.push(b.polygon);
-          }
-        } catch {}
-      }
+    const pinPt = turf.point([green_lon, green_lat]);
+    const hole_bearing = normalizeBearing(
+      turf.bearing(turf.point([tee_lon, tee_lat]), turf.point([green_lon, green_lat]))
+    );
 
-      const holeWater: any[] = [];
-      for (const w of waterPolygons) {
-        try {
-          let minM = Infinity;
-          let minGreenM = Infinity;
-          for (const c of w.coords) {
-            const d = turf.pointToLineDistance(turf.point(c), clLine, { units: 'meters' });
-            if (d < minM) minM = d;
-            const dg = turf.distance(turf.point(c), pinPt, { units: 'meters' });
-            if (dg < minGreenM) minGreenM = dg;
-          }
-          if (minM <= 100 || minGreenM <= 80) {
-            holeWater.push(w.polygon);
-          }
-        } catch {}
-      }
+    const approach_bearing = (pivot_lon !== null && pivot_lat !== null)
+      ? normalizeBearing(turf.bearing(turf.point([pivot_lon, pivot_lat]), turf.point([green_lon, green_lat])))
+      : hole_bearing;
 
-      const holeTees: any[] = [];
-      for (const t of teePolygons) {
-        try {
-          const dt = turf.distance(turf.point(t.center), turf.point([tee_lon, tee_lat]), { units: 'meters' });
-          if (dt <= 45) {
-            holeTees.push(t.polygon);
-          }
-        } catch {}
-      }
+    const clLine = turf.lineString(coords);
+    const yardage = Math.round(turf.length(clLine, { units: 'meters' }) * 1.0936133);
 
-      const holeFeatures: any[] = [];
-      // 1. Tee
+    // Match fairways within 65m
+    const holeFairways: any[] = [];
+    for (const fw of fairwayPolygons) {
+      try {
+        let minM = Infinity;
+        for (const c of fw.coords) {
+          const d = turf.pointToLineDistance(turf.point(c), clLine, { units: 'meters' });
+          if (d < minM) minM = d;
+        }
+        if (minM <= 65 || turf.booleanIntersects(fw.polygon, clLine)) {
+          holeFairways.push(fw.polygon);
+        }
+      } catch {}
+    }
+
+    // Match bunkers within 65m of centerline or 50m of green
+    const holeBunkers: any[] = [];
+    for (const b of bunkerPolygons) {
+      try {
+        let minM = Infinity;
+        let minGreenM = Infinity;
+        for (const c of b.coords) {
+          const d = turf.pointToLineDistance(turf.point(c), clLine, { units: 'meters' });
+          if (d < minM) minM = d;
+          const dg = turf.distance(turf.point(c), pinPt, { units: 'meters' });
+          if (dg < minGreenM) minGreenM = dg;
+        }
+        if (minM <= 65 || minGreenM <= 50) {
+          holeBunkers.push(b.polygon);
+        }
+      } catch {}
+    }
+
+    // Match water within 100m of centerline or 75m of green
+    const holeWater: any[] = [];
+    for (const w of waterPolygons) {
+      try {
+        let minM = Infinity;
+        let minGreenM = Infinity;
+        for (const c of w.coords) {
+          const d = turf.pointToLineDistance(turf.point(c), clLine, { units: 'meters' });
+          if (d < minM) minM = d;
+          const dg = turf.distance(turf.point(c), pinPt, { units: 'meters' });
+          if (dg < minGreenM) minGreenM = dg;
+        }
+        if (minM <= 100 || minGreenM <= 75) {
+          holeWater.push(w.polygon);
+        }
+      } catch {}
+    }
+
+    // Match tee polygons within 45m of tee start point
+    const holeTees: any[] = [];
+    for (const t of teePolygons) {
+      try {
+        const dt = turf.distance(turf.point(t.center), turf.point([tee_lon, tee_lat]), { units: 'meters' });
+        if (dt <= 45) {
+          holeTees.push(t.polygon);
+        }
+      } catch {}
+    }
+
+    const holeFeatures: any[] = [];
+    // 1. Tee
+    holeFeatures.push({
+      id: `tee-${hNum}`,
+      type: 'tee',
+      coords: [tee_lon, tee_lat],
+      props: { label: 'Back Tee', elev: 0 }
+    });
+    // 1B. Matched Tee Polygons
+    holeTees.forEach((tPoly, idx) => {
       holeFeatures.push({
-        id: `tee-${hNum}`,
-        type: 'tee',
-        coords: [tee_lon, tee_lat],
-        props: { label: 'Back Tee', elev: 0 }
-      });
-      // 1B. Matched Tee Polygons
-      holeTees.forEach((tPoly, idx) => {
-        holeFeatures.push({
-          id: `tee-poly-${hNum}-${idx}`,
-          type: 'tee_polygon',
-          coords: tPoly.geometry?.coordinates?.[0] || tPoly.coordinates?.[0],
-          props: {}
-        });
-      });
-      // 2. Centerline
-      holeFeatures.push({
-        id: `cl-${hNum}`,
-        type: 'centerline',
-        coords,
+        id: `tee-poly-${hNum}-${idx}`,
+        type: 'tee_polygon',
+        coords: tPoly.geometry?.coordinates?.[0] || tPoly.coordinates?.[0],
         props: {}
       });
-      // 3. Green
-      if (green_polygon) {
-        holeFeatures.push({
-          id: `green-${hNum}`,
-          type: 'green',
-          coords: bestGreen ? bestGreen.coords : green_polygon.coordinates[0],
-          props: {}
-        });
-      }
-      // 4. Fairways
-      holeFairways.forEach((fwPoly, idx) => {
-        holeFeatures.push({
-          id: `fw-${hNum}-${idx}`,
-          type: 'fairway',
-          coords: fwPoly.geometry?.coordinates?.[0] || fwPoly.coordinates?.[0],
-          props: {}
-        });
-      });
-      // 5. Bunkers
-      holeBunkers.forEach((bkPoly, idx) => {
-        holeFeatures.push({
-          id: `bunk-${hNum}-${idx}`,
-          type: 'bunker',
-          coords: bkPoly.geometry?.coordinates?.[0] || bkPoly.coordinates?.[0],
-          props: {}
-        });
-      });
-      // 6. Water
-      holeWater.forEach((wtPoly, idx) => {
-        holeFeatures.push({
-          id: `water-${hNum}-${idx}`,
-          type: 'water',
-          coords: wtPoly.geometry?.coordinates?.[0] || wtPoly.coordinates?.[0],
-          props: {}
-        });
-      });
-      // 7. Trees
-      for (const tr of treeNodes) {
-        try {
-          const pt = turf.point(tr.coords);
-          const d = turf.pointToLineDistance(pt, clLine, { units: 'meters' });
-          const dg = turf.distance(pt, pinPt, { units: 'meters' });
-          if (d <= 60 || dg <= 45) {
-            holeFeatures.push({
-              id: tr.id,
-              type: 'tree',
-              coords: tr.coords,
-              props: { label: '', elev: 0, radius: 8, dx: 0, dy: 0 }
-            });
-          }
-        } catch {}
-      }
-
-      matchedHoles.push({
-        hole_number: hNum,
-        par: holeWay.par,
-        yardage,
-        tee_lat,
-        tee_lon,
-        pivot_lat,
-        pivot_lon,
-        green_lat,
-        green_lon,
-        hole_bearing: Math.round(hole_bearing * 10) / 10,
-        approach_bearing: Math.round(approach_bearing * 10) / 10,
-        centerline: coords,
-        green_polygon,
-        fairways_geojson: holeFairways,
-        bunkers_geojson: holeBunkers,
-        water_geojson: holeWater,
-        tees_geojson: holeTees,
-        features: holeFeatures
+    });
+    // 2. Centerline
+    holeFeatures.push({
+      id: `cl-${hNum}`,
+      type: 'centerline',
+      coords,
+      props: {}
+    });
+    // 3. Green
+    if (green_polygon) {
+      holeFeatures.push({
+        id: `green-${hNum}`,
+        type: 'green',
+        coords: green_polygon.coordinates[0],
+        props: {}
       });
     }
+    // 4. Fairways
+    holeFairways.forEach((fwPoly, idx) => {
+      holeFeatures.push({
+        id: `fw-${hNum}-${idx}`,
+        type: 'fairway',
+        coords: fwPoly.geometry?.coordinates?.[0] || fwPoly.coordinates?.[0],
+        props: {}
+      });
+    });
+    // 5. Bunkers
+    holeBunkers.forEach((bkPoly, idx) => {
+      holeFeatures.push({
+        id: `bunk-${hNum}-${idx}`,
+        type: 'bunker',
+        coords: bkPoly.geometry?.coordinates?.[0] || bkPoly.coordinates?.[0],
+        props: {}
+      });
+    });
+    // 6. Water
+    holeWater.forEach((wtPoly, idx) => {
+      holeFeatures.push({
+        id: `water-${hNum}-${idx}`,
+        type: 'water',
+        coords: wtPoly.geometry?.coordinates?.[0] || wtPoly.coordinates?.[0],
+        props: {}
+      });
+    });
+    // 7. Trees
+    for (const tr of treeNodes) {
+      try {
+        const pt = turf.point(tr.coords);
+        const d = turf.pointToLineDistance(pt, clLine, { units: 'meters' });
+        const dg = turf.distance(pt, pinPt, { units: 'meters' });
+        if (d <= 60 || dg <= 40) {
+          holeFeatures.push({
+            id: tr.id,
+            type: 'tree',
+            coords: tr.coords,
+            props: { label: '', elev: 0, radius: 8, dx: 0, dy: 0 }
+          });
+        }
+      } catch {}
+    }
+
+    matchedHoles.push({
+      hole_number: hNum,
+      par,
+      yardage: yardage || 350,
+      tee_lat,
+      tee_lon,
+      pivot_lat,
+      pivot_lon,
+      green_lat,
+      green_lon,
+      hole_bearing: Math.round(hole_bearing * 10) / 10,
+      approach_bearing: Math.round(approach_bearing * 10) / 10,
+      centerline: coords,
+      green_polygon,
+      fairways_geojson: holeFairways,
+      bunkers_geojson: holeBunkers,
+      water_geojson: holeWater,
+      tees_geojson: holeTees,
+      features: holeFeatures
+    });
   }
 
   const unusedGreens = greenPolygons.filter(g => !g.used).map(g => g.polygon);
@@ -340,7 +390,7 @@ export function matchOsmHoles(osmData: any, courseNameFallback: string) {
     center_lon,
     holes: matchedHoles,
     unmatchedGreens: unusedGreens,
-    hasExplicitHoles: matchedHoles.length > 0
+    hasExplicitHoles: uniqueHolesMap.size > 0
   };
 }
 
@@ -348,46 +398,13 @@ export function buildFallbackHolesFromGreens(
   greenPolygons: Array<{ center: [number, number]; polygon: any }>,
   courseName: string
 ): MatchedHole[] {
-  const holes: MatchedHole[] = [];
-  const count = Math.min(18, greenPolygons.length);
-
-  for (let i = 0; i < count; i++) {
-    const hNum = i + 1;
-    const g = greenPolygons[i];
-    const green_lon = g.center[0];
-    const green_lat = g.center[1];
-
-    const teePt = turf.destination(turf.point([green_lon, green_lat]), 360 * 0.9144, 180, { units: 'meters' });
-    const tee_lon = teePt.geometry.coordinates[0];
-    const tee_lat = teePt.geometry.coordinates[1];
-
-    const centerline = [
-      [tee_lon, tee_lat],
-      [green_lon, green_lat]
-    ];
-
-    const hole_bearing = normalizeBearing(
-      turf.bearing(turf.point([tee_lon, tee_lat]), turf.point([green_lon, green_lat]))
-    );
-
-    holes.push({
-      hole_number: hNum,
-      par: 4,
-      yardage: 360,
-      tee_lat,
-      tee_lon,
-      pivot_lat: null,
-      pivot_lon: null,
-      green_lat,
-      green_lon,
-      hole_bearing: Math.round(hole_bearing * 10) / 10,
-      approach_bearing: Math.round(hole_bearing * 10) / 10,
-      centerline,
-      green_polygon: g.polygon,
-      fairways_geojson: [],
-      bunkers_geojson: []
-    });
-  }
-
-  return holes;
+  const dummyOsm = {
+    elements: greenPolygons.map((g, i) => ({
+      type: 'way',
+      id: 990000 + i,
+      tags: { golf: 'green' },
+      geometry: g.polygon.geometry.coordinates[0].map(([lon, lat]: [number, number]) => ({ lon, lat }))
+    }))
+  };
+  return matchOsmHoles(dummyOsm, courseName).holes;
 }

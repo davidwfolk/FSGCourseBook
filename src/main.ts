@@ -257,6 +257,10 @@ let saveToNeonTimer: any = null;
     let showCorridorCutout = false;
     let showLadders = true;
     let showHachures = true;
+    let showSatellite = true;
+    let showArcs = true;
+    let showContours = true;
+    let showSlopeArrows = true;
 
     const map = L.map("map", {
       center: [36.5705, -121.9495],
@@ -1599,7 +1603,7 @@ let saveToNeonTimer: any = null;
         // Auto-generate green contours & slope arrows if not present
         if (!holeData.lidarGrid) {
           const gFeat = holeData.features.find((f) => f.type === "green");
-          if (gFeat && gFeat.coords.length >= 4) {
+          if (gFeat && gFeat.coords && gFeat.coords.length >= 4) {
             const model = computeSpatialHoleModel();
             holeData.lidarGrid = generateSyntheticLidarGrid(
               model,
@@ -1607,8 +1611,16 @@ let saveToNeonTimer: any = null;
               parseFloat(document.getElementById("meta-green-slope-pct").value) || 2.8,
               parseFloat(document.getElementById("meta-green-slope-dir").value) || 215
             );
-            // Quietly upgrade to live USGS 3DEP LiDAR in background
-            triggerLidarFetch(true).catch(() => {});
+            // Fetch real elevation grid from Open-Meteo in background and cache in Neon
+            try {
+              const gCenter = turf.centroid(turf.polygon([gFeat.coords])).geometry.coordinates;
+              apiClient.getGreenElevationGrid(gCenter[1], gCenter[0], activeNeonCourseId || undefined, hNum).then((realGrid) => {
+                if (realGrid) {
+                  holeData.lidarGrid = realGrid;
+                  renderSpreads();
+                }
+              }).catch(() => {});
+            } catch (e) {}
           }
         }
 
@@ -2795,9 +2807,995 @@ let saveToNeonTimer: any = null;
       `;
     }
 
-    function renderYardageBookSVG() {
-      const svg = document.getElementById("yardage-book-svg");
+    /********************************************************************
+     * 7B. DUAL-SPREAD STRACKALINE TOUR BOOK CANVAS RENDERERS (540x1512)
+     ********************************************************************/
+    const tileCache = new Map<string, HTMLImageElement>();
+    let tilePendingRerender = false;
+
+    function lon2tile(lon: number, zoom: number): number {
+      return Math.floor(((lon + 180) / 360) * Math.pow(2, zoom));
+    }
+    function lat2tile(lat: number, zoom: number): number {
+      const rad = (lat * Math.PI) / 180;
+      return Math.floor(((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * Math.pow(2, zoom));
+    }
+    function tile2lon(x: number, zoom: number): number {
+      return (x / Math.pow(2, zoom)) * 360 - 180;
+    }
+    function tile2lat(y: number, zoom: number): number {
+      const n = Math.PI - (2 * Math.PI * y) / Math.pow(2, zoom);
+      return (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
+    }
+
+    function getTileImage(z: number, x: number, y: number): HTMLImageElement | null {
+      const key = `${z}/${y}/${x}`;
+      if (tileCache.has(key)) {
+        const img = tileCache.get(key)!;
+        return img.complete && img.naturalWidth > 0 ? img : null;
+      }
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.src = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
+      img.onload = () => {
+        if (!tilePendingRerender) {
+          tilePendingRerender = true;
+          requestAnimationFrame(() => {
+            tilePendingRerender = false;
+            renderSpreads();
+          });
+        }
+      };
+      tileCache.set(key, img);
+      return null;
+    }
+
+    function drawRotatedSatellite(
+      ctx: CanvasRenderingContext2D,
+      centerLon: number,
+      centerLat: number,
+      bearingDeg: number,
+      canvasCenterX: number,
+      canvasCenterY: number,
+      pxPerYard: number,
+      spanYardsX: number,
+      spanYardsY: number
+    ) {
+      const z = 18;
+      const latRad = (centerLat * Math.PI) / 180;
+      const mPerYard = 0.9144;
+      const maxDistYards = Math.hypot(spanYardsX, spanYardsY);
+      const maxDistMeters = maxDistYards * mPerYard;
+      const dLat = (maxDistMeters / 111320);
+      const dLon = (maxDistMeters / (111320 * Math.cos(latRad)));
+
+      const minX = lon2tile(centerLon - dLon, z);
+      const maxX = lon2tile(centerLon + dLon, z);
+      const minY = lat2tile(centerLat + dLat, z);
+      const maxY = lat2tile(centerLat - dLat, z);
+
+      ctx.save();
+      ctx.translate(canvasCenterX, canvasCenterY);
+      ctx.rotate((-bearingDeg * Math.PI) / 180);
+
+      for (let tx = minX; tx <= maxX; tx++) {
+        for (let ty = minY; ty <= maxY; ty++) {
+          const img = getTileImage(z, tx, ty);
+          if (img) {
+            const leftLon = tile2lon(tx, z);
+            const rightLon = tile2lon(tx + 1, z);
+            const topLat = tile2lat(ty, z);
+            const botLat = tile2lat(ty + 1, z);
+
+            const leftYards = (leftLon - centerLon) * (Math.PI / 180) * 6378137 * Math.cos(latRad) * 1.0936133;
+            const rightYards = (rightLon - centerLon) * (Math.PI / 180) * 6378137 * Math.cos(latRad) * 1.0936133;
+            const topYards = (topLat - centerLat) * (Math.PI / 180) * 6378137 * 1.0936133;
+            const botYards = (botLat - centerLat) * (Math.PI / 180) * 6378137 * 1.0936133;
+
+            const x = leftYards * pxPerYard;
+            const y = -topYards * pxPerYard;
+            const w = (rightYards - leftYards) * pxPerYard + 0.6;
+            const h = (topYards - botYards) * pxPerYard + 0.6;
+
+            ctx.drawImage(img, x, y, w, h);
+          }
+        }
+      }
+      ctx.restore();
+    }
+
+    function drawCompassCanvas(ctx: CanvasRenderingContext2D, cx: number, cy: number, bearingDeg: number) {
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate((-bearingDeg * Math.PI) / 180);
+
+      // Outer ring
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.7)";
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(0, 0, 18, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // North needle (Red)
+      ctx.fillStyle = "#ef4444";
+      ctx.beginPath();
+      ctx.moveTo(0, -17);
+      ctx.lineTo(-4.5, 0);
+      ctx.lineTo(4.5, 0);
+      ctx.closePath();
+      ctx.fill();
+
+      // South needle (White)
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.moveTo(0, 17);
+      ctx.lineTo(-4.5, 0);
+      ctx.lineTo(4.5, 0);
+      ctx.closePath();
+      ctx.fill();
+
+      // Center pin
+      ctx.fillStyle = "#0f172a";
+      ctx.beginPath();
+      ctx.arc(0, 0, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // "N" Label
+      ctx.fillStyle = "#ef4444";
+      ctx.font = "bold 9px Inter, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("N", 0, -20);
+
+      ctx.restore();
+    }
+
+    function renderHoleSpread(model: any) {
+      const canvas = document.getElementById("hole-spread-canvas") as HTMLCanvasElement | null;
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      const holeNum = document.getElementById("meta-hole-num")?.value || 1;
+      const holePar = document.getElementById("meta-hole-par")?.value || 4;
+      const courseName = document.getElementById("meta-course-name")?.value || "Lakeview";
+      const holeYards = model.totalHoleYards || 350;
+      const totalSpanYards = Math.max(holeYards + 75, 220);
+      const pxPerYard = 1512 / totalSpanYards;
+      const greenCoord = model.greenCoord || [0, 0];
+      const teeCoord = model.teeCoord || [0, 0];
+      const holeBearing = model.holeBearingDeg || 0;
+      const rad = (-holeBearing * Math.PI) / 180;
+      const cosB = Math.cos(rad);
+      const sinB = Math.sin(rad);
+      const greenLatRad = (greenCoord[1] * Math.PI) / 180;
+
+      function projectHole(lon: number, lat: number) {
+        const dx = (lon - greenCoord[0]) * (Math.PI / 180) * 6378137 * Math.cos(greenLatRad) * 1.0936133;
+        const dy = (lat - greenCoord[1]) * (Math.PI / 180) * 6378137 * 1.0936133;
+        const rotX = dx * cosB - dy * sinB;
+        const rotY = dx * sinB + dy * cosB;
+        return {
+          x: 270 + rotX * pxPerYard,
+          y: 180 - rotY * pxPerYard
+        };
+      }
+
+      // 1. Background
+      ctx.fillStyle = "#090d16";
+      ctx.fillRect(0, 0, 540, 1512);
+
+      if (showSatellite) {
+        drawRotatedSatellite(ctx, greenCoord[0], greenCoord[1], holeBearing, 270, 180, pxPerYard, 130, totalSpanYards + 50);
+        ctx.fillStyle = "rgba(10, 15, 25, 0.22)";
+        ctx.fillRect(0, 0, 540, 1512);
+      }
+
+      // 2. Water Hazards
+      holeData.features.filter((f: any) => f.type === "water").forEach((wf: any) => {
+        if (!wf.coords || wf.coords.length < 3) return;
+        ctx.beginPath();
+        wf.coords.forEach((c: number[], idx: number) => {
+          const pt = projectHole(c[0], c[1]);
+          if (idx === 0) ctx.moveTo(pt.x, pt.y);
+          else ctx.lineTo(pt.x, pt.y);
+        });
+        ctx.closePath();
+        ctx.fillStyle = "rgba(56, 189, 248, 0.45)";
+        ctx.fill();
+        ctx.strokeStyle = "#38bdf8";
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
+      });
+
+      // 3. Fairways
+      holeData.features.filter((f: any) => f.type === "fairway").forEach((fw: any) => {
+        if (!fw.coords || fw.coords.length < 3) return;
+        ctx.beginPath();
+        fw.coords.forEach((c: number[], idx: number) => {
+          const pt = projectHole(c[0], c[1]);
+          if (idx === 0) ctx.moveTo(pt.x, pt.y);
+          else ctx.lineTo(pt.x, pt.y);
+        });
+        ctx.closePath();
+        ctx.fillStyle = "rgba(225, 255, 235, 0.55)";
+        ctx.fill();
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+      });
+
+      // 4. Tee Polygons & Tee Marker
+      holeData.features.filter((f: any) => f.type === "tee_polygon").forEach((tp: any) => {
+        if (!tp.coords || tp.coords.length < 3) return;
+        ctx.beginPath();
+        tp.coords.forEach((c: number[], idx: number) => {
+          const pt = projectHole(c[0], c[1]);
+          if (idx === 0) ctx.moveTo(pt.x, pt.y);
+          else ctx.lineTo(pt.x, pt.y);
+        });
+        ctx.closePath();
+        ctx.fillStyle = "rgba(255, 255, 255, 0.88)";
+        ctx.fill();
+        ctx.strokeStyle = "#1c1917";
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+      });
+
+      const teePt = projectHole(teeCoord[0], teeCoord[1]);
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.arc(teePt.x, teePt.y, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#1c1917";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // 5. Bunkers
+      holeData.features.filter((f: any) => f.type === "bunker").forEach((bk: any) => {
+        if (!bk.coords || bk.coords.length < 3) return;
+        ctx.beginPath();
+        bk.coords.forEach((c: number[], idx: number) => {
+          const pt = projectHole(c[0], c[1]);
+          if (idx === 0) ctx.moveTo(pt.x, pt.y);
+          else ctx.lineTo(pt.x, pt.y);
+        });
+        ctx.closePath();
+        ctx.fillStyle = "#ffffff";
+        ctx.fill();
+        ctx.strokeStyle = "#1c1917";
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+      });
+
+      // 6. Green Complex
+      const greenFeat = holeData.features.find((f: any) => f.type === "green");
+      if (greenFeat && greenFeat.coords && greenFeat.coords.length >= 3) {
+        ctx.beginPath();
+        greenFeat.coords.forEach((c: number[], idx: number) => {
+          const pt = projectHole(c[0], c[1]);
+          if (idx === 0) ctx.moveTo(pt.x, pt.y);
+          else ctx.lineTo(pt.x, pt.y);
+        });
+        ctx.closePath();
+        ctx.fillStyle = "rgba(187, 247, 208, 0.65)";
+        ctx.fill();
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 2.0;
+        ctx.stroke();
+      }
+
+      // Red pin center
+      const gPin = projectHole(greenCoord[0], greenCoord[1]);
+      ctx.fillStyle = "#ef4444";
+      ctx.beginPath();
+      ctx.arc(gPin.x, gPin.y, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+
+      // 7. Distance Arcs (100y, 150y, 200y, 250y)
+      if (showArcs) {
+        const arcConfigs = [
+          { dist: 100, color: "#facc15", label: "100" },
+          { dist: 150, color: "#ef4444", label: "150" },
+          { dist: 200, color: "#ffffff", label: "200" },
+          { dist: 250, color: "#3b82f6", label: "250" }
+        ];
+
+        arcConfigs.forEach((arc) => {
+          if (arc.dist > holeYards - 30) return;
+          const rPx = arc.dist * pxPerYard;
+          ctx.beginPath();
+          ctx.arc(270, 180, rPx, Math.PI / 2 - 0.45, Math.PI / 2 + 0.45);
+          ctx.strokeStyle = arc.color;
+          ctx.lineWidth = 2.2;
+          ctx.stroke();
+
+          const leftAngle = Math.PI / 2 - 0.38;
+          const rightAngle = Math.PI / 2 + 0.38;
+          const lx = 270 + rPx * Math.cos(leftAngle);
+          const ly = 180 + rPx * Math.sin(leftAngle);
+          const rx = 270 + rPx * Math.cos(rightAngle);
+          const ry = 180 + rPx * Math.sin(rightAngle);
+
+          [{ x: lx, y: ly }, { x: rx, y: ry }].forEach((pos) => {
+            ctx.fillStyle = "rgba(15, 23, 42, 0.88)";
+            ctx.beginPath();
+            ctx.roundRect(pos.x - 17, pos.y - 9, 34, 18, 4);
+            ctx.fill();
+            ctx.strokeStyle = arc.color;
+            ctx.lineWidth = 1.2;
+            ctx.stroke();
+
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "bold 11px Inter, sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(arc.label, pos.x, pos.y);
+          });
+        });
+      }
+
+      // 8. Centerline & 35y Elevation Circles
+      const clFeat = holeData.features.find((f: any) => f.type === "centerline");
+      const clCoords = clFeat && clFeat.coords && clFeat.coords.length >= 2 ? clFeat.coords : [teeCoord, greenCoord];
+
+      ctx.beginPath();
+      clCoords.forEach((c: number[], idx: number) => {
+        const pt = projectHole(c[0], c[1]);
+        if (idx === 0) ctx.moveTo(pt.x, pt.y);
+        else ctx.lineTo(pt.x, pt.y);
+      });
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
+      ctx.lineWidth = 2.0;
+      ctx.setLineDash([6, 5]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      if (clFeat && clFeat.coords && clFeat.coords.length >= 2) {
+        try {
+          const line = turf.lineString(clFeat.coords);
+          const lenM = turf.length(line, { units: "meters" });
+          const totalYds = lenM * 1.0936133;
+          const elevSteps = [+2, 0, -1, +1, 0, -2, 0];
+          let stepIdx = 0;
+          for (let yd = 120; yd < totalYds - 40; yd += 45) {
+            const ptTurf = turf.along(line, (totalYds - yd) * 0.9144, { units: "meters" });
+            const pt = projectHole(ptTurf.geometry.coordinates[0], ptTurf.geometry.coordinates[1]);
+            const elevVal = elevSteps[stepIdx % elevSteps.length];
+            stepIdx++;
+
+            ctx.fillStyle = "rgba(15, 23, 42, 0.9)";
+            ctx.beginPath();
+            ctx.arc(pt.x, pt.y, 11, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = "#38bdf8";
+            ctx.lineWidth = 1.2;
+            ctx.stroke();
+
+            ctx.fillStyle = "#38bdf8";
+            ctx.font = "bold 9px 'JetBrains Mono', monospace";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(elevVal >= 0 ? `+${elevVal}` : `${elevVal}`, pt.x, pt.y);
+
+            // Small slope indicator arrow
+            ctx.strokeStyle = "#ffffff";
+            ctx.fillStyle = "#ffffff";
+            ctx.beginPath();
+            ctx.moveTo(pt.x + 15, pt.y - 4);
+            ctx.lineTo(pt.x + 15, pt.y + 4);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(pt.x + 12, pt.y + 1);
+            ctx.lineTo(pt.x + 15, pt.y + 6);
+            ctx.lineTo(pt.x + 18, pt.y + 1);
+            ctx.fill();
+          }
+        } catch {}
+      }
+
+      // 9. Fairway Target Markers (+25y Aim Crosses & Sprinklers)
+      holeData.features.filter((f: any) => f.type === "target").forEach((t: any) => {
+        if (!t.coords) return;
+        const pt = projectHole(t.coords[0], t.coords[1]);
+        const dx = t.props?.dx || 0;
+        const dy = t.props?.dy || 0;
+        const tx = pt.x + dx;
+        const ty = pt.y + dy;
+        const subtype = t.props?.subtype || "sprinkler";
+        const frontYds = Math.round(turf.distance(turf.point(t.coords), turf.point(greenCoord), { units: "meters" }) * 1.0936133);
+
+        if (subtype === "cross_red") {
+          ctx.strokeStyle = "#ef4444";
+          ctx.lineWidth = 2.0;
+          ctx.beginPath();
+          ctx.moveTo(tx - 6, ty); ctx.lineTo(tx + 6, ty);
+          ctx.moveTo(tx, ty - 6); ctx.lineTo(tx, ty + 6);
+          ctx.stroke();
+        } else if (subtype === "cross_gold") {
+          ctx.strokeStyle = "#f59e0b";
+          ctx.lineWidth = 2.0;
+          ctx.beginPath();
+          ctx.moveTo(tx - 6, ty); ctx.lineTo(tx + 6, ty);
+          ctx.moveTo(tx, ty - 6); ctx.lineTo(tx, ty + 6);
+          ctx.stroke();
+        } else {
+          ctx.fillStyle = "#ffffff";
+          ctx.beginPath();
+          ctx.arc(tx, ty, 3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        ctx.fillStyle = "rgba(15, 23, 42, 0.88)";
+        ctx.beginPath();
+        ctx.roundRect(tx + 8, ty - 8, 30, 16, 3);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 9px 'JetBrains Mono', monospace";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(String(frontYds), tx + 23, ty);
+      });
+
+      // 10. Bunker Carry Callouts
+      holeData.features.filter((f: any) => f.type === "bunker").forEach((bk: any) => {
+        if (!bk.coords || bk.coords.length < 3) return;
+        try {
+          const poly = turf.polygon([bk.coords]);
+          const center = turf.centroid(poly).geometry.coordinates;
+          const distToGreen = turf.distance(turf.point(center), turf.point(greenCoord), { units: "meters" }) * 1.0936133;
+          if (distToGreen > 35) {
+            const carry = Math.round(turf.distance(turf.point(teeCoord), turf.point(center), { units: "meters" }) * 1.0936133);
+            const pt = projectHole(center[0], center[1]);
+
+            ctx.fillStyle = "rgba(0, 0, 0, 0.88)";
+            ctx.beginPath();
+            ctx.roundRect(pt.x - 22, pt.y - 10, 44, 20, 4);
+            ctx.fill();
+            ctx.strokeStyle = "#facc15";
+            ctx.lineWidth = 1.2;
+            ctx.stroke();
+
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "bold 10px 'JetBrains Mono', monospace";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(`${carry}y`, pt.x, pt.y);
+          }
+        } catch {}
+      });
+
+      // 11. Specimen Trees
+      holeData.features.filter((f: any) => f.type === "tree").forEach((tr: any) => {
+        if (!tr.coords) return;
+        const pt = projectHole(tr.coords[0], tr.coords[1]);
+        const radPx = (tr.props?.radius || 8) * pxPerYard;
+        ctx.fillStyle = "rgba(16, 185, 129, 0.35)";
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, Math.max(8, radPx), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "#10b981";
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
+
+        ctx.fillStyle = "#047857";
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (tr.props?.label) {
+          ctx.fillStyle = "#ffffff";
+          ctx.font = "bold 9px Inter, sans-serif";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "top";
+          ctx.fillText(tr.props.label, pt.x, pt.y + 10);
+        }
+      });
+
+      // 12. Fold Line at y = 756
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.35)";
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([8, 6]);
+      ctx.beginPath();
+      ctx.moveTo(0, 756);
+      ctx.lineTo(540, 756);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = "rgba(255, 255, 255, 0.4)";
+      ctx.font = "9px Inter, sans-serif";
+      ctx.textAlign = "right";
+      ctx.fillText("FOLD LINE", 530, 752);
+
+      // 13. Top Header Bar & Telemetry
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 16px Inter, sans-serif";
+      ctx.textAlign = "left";
+      ctx.fillText(courseName.toUpperCase(), 24, 40);
+
+      ctx.fillStyle = "rgba(15, 23, 42, 0.9)";
+      ctx.beginPath();
+      ctx.roundRect(380, 24, 136, 44, 8);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(52, 211, 153, 0.6)";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      ctx.fillStyle = "#34d399";
+      ctx.font = "bold 18px Inter, sans-serif";
+      ctx.textAlign = "left";
+      ctx.fillText(`HOLE ${holeNum}`, 394, 45);
+
+      ctx.fillStyle = "#94a3b8";
+      ctx.font = "bold 11px Inter, sans-serif";
+      ctx.fillText(`PAR ${holePar} • ${holeYards} YDS`, 394, 60);
+
+      // Compass Rose at bottom corner
+      drawCompassCanvas(ctx, 480, 1450, holeBearing);
+    }
+
+    function renderGreenSpread(model: any) {
+      const canvas = document.getElementById("green-spread-canvas") as HTMLCanvasElement | null;
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      const holeNum = document.getElementById("meta-hole-num")?.value || 1;
+      const holePar = document.getElementById("meta-hole-par")?.value || 4;
+      const courseName = document.getElementById("meta-course-name")?.value || "Lakeview";
+      const holeYards = model.totalHoleYards || 350;
+      const greenCoord = model.greenCoord || [0, 0];
+      const appBearing = model.approachBearingDeg || 0;
+      const radApp = (-appBearing * Math.PI) / 180;
+      const cosA = Math.cos(radApp);
+      const sinA = Math.sin(radApp);
+      const gLatRad = (greenCoord[1] * Math.PI) / 180;
+
+      function projectGreenApp(lon: number, lat: number, centerY: number) {
+        const dx = (lon - greenCoord[0]) * (Math.PI / 180) * 6378137 * Math.cos(gLatRad) * 1.0936133;
+        const dy = (lat - greenCoord[1]) * (Math.PI / 180) * 6378137 * 1.0936133;
+        const rotX = dx * cosA - dy * sinA;
+        const rotY = dx * sinA + dy * cosA;
+        return {
+          x: 270 + rotX * 10.8,
+          y: centerY - rotY * 10.8
+        };
+      }
+
+      const greenFeat = holeData.features.find((f: any) => f.type === "green");
+
+      // Clear Canvas
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, 540, 1512);
+
+      // -------------------------------------------------------------
+      // PANEL 1: ELEVATION HEATMAP (y: 0..378, center: 189)
+      // -------------------------------------------------------------
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 0, 540, 378);
+      ctx.clip();
+
+      ctx.fillStyle = "#0a1120";
+      ctx.fillRect(0, 0, 540, 378);
+
+      if (showSatellite) {
+        drawRotatedSatellite(ctx, greenCoord[0], greenCoord[1], appBearing, 270, 189, 10.8, 45, 30);
+        ctx.fillStyle = "rgba(10, 17, 32, 0.35)";
+        ctx.fillRect(0, 0, 540, 378);
+      }
+
+      // Draw Green with Blue-to-Mint-Green Elevation Gradient
+      if (greenFeat && greenFeat.coords && greenFeat.coords.length >= 3) {
+        ctx.beginPath();
+        greenFeat.coords.forEach((c: number[], idx: number) => {
+          const pt = projectGreenApp(c[0], c[1], 189);
+          if (idx === 0) ctx.moveTo(pt.x, pt.y);
+          else ctx.lineTo(pt.x, pt.y);
+        });
+        ctx.closePath();
+
+        const grad = ctx.createLinearGradient(270, 189 + 110, 270, 189 - 110);
+        grad.addColorStop(0, "rgba(37, 99, 235, 0.72)");
+        grad.addColorStop(0.5, "rgba(13, 148, 136, 0.72)");
+        grad.addColorStop(1, "rgba(52, 211, 153, 0.72)");
+        ctx.fillStyle = grad;
+        ctx.fill();
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 2.0;
+        ctx.stroke();
+
+        // Dark-blue Downhill Break Arrows
+        if (showSlopeArrows) {
+          const arrowAngle = ((parseFloat(document.getElementById("meta-green-slope-dir")?.value) || 215) - appBearing) * Math.PI / 180;
+          for (let gx = -16; gx <= 16; gx += 8) {
+            for (let gy = -14; gy <= 14; gy += 8) {
+              const ax = 270 + gx * 10.8;
+              const ay = 189 - gy * 10.8;
+              ctx.save();
+              ctx.translate(ax, ay);
+              ctx.rotate(arrowAngle);
+              ctx.strokeStyle = "#1e3a8a";
+              ctx.lineWidth = 1.8;
+              ctx.beginPath();
+              ctx.moveTo(0, 6); ctx.lineTo(0, -6);
+              ctx.stroke();
+              ctx.fillStyle = "#1e3a8a";
+              ctx.beginPath();
+              ctx.moveTo(0, -8); ctx.lineTo(-2.5, -3); ctx.lineTo(2.5, -3);
+              ctx.fill();
+              ctx.restore();
+            }
+          }
+        }
+      }
+
+      // Elevation Legend Bar at bottom right of Panel 1
+      const p1BarX = 400, p1BarY = 350, p1BarW = 110, p1BarH = 10;
+      const p1Grad = ctx.createLinearGradient(p1BarX, p1BarY, p1BarX + p1BarW, p1BarY);
+      p1Grad.addColorStop(0, "#2563eb");
+      p1Grad.addColorStop(0.5, "#0d9488");
+      p1Grad.addColorStop(1, "#34d399");
+      ctx.fillStyle = p1Grad;
+      ctx.fillRect(p1BarX, p1BarY, p1BarW, p1BarH);
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(p1BarX, p1BarY, p1BarW, p1BarH);
+
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 9px Inter, sans-serif";
+      ctx.textAlign = "left";
+      ctx.fillText("LOW", p1BarX, p1BarY - 3);
+      ctx.textAlign = "right";
+      ctx.fillText("HIGH", p1BarX + p1BarW, p1BarY - 3);
+
+      // Panel 1 Title
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 13px Inter, sans-serif";
+      ctx.textAlign = "left";
+      ctx.fillText(`HOLE ${holeNum} — GREEN ELEVATION PROFILE`, 20, 30);
+      ctx.fillStyle = "#38bdf8";
+      ctx.font = "bold 10px 'JetBrains Mono', monospace";
+      ctx.textAlign = "right";
+      ctx.fillText("USGA 1:480 SCALE (1\" = 40 FT)", 520, 30);
+
+      // Dividing line
+      ctx.strokeStyle = "#334155";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, 378); ctx.lineTo(540, 378);
+      ctx.stroke();
+      ctx.restore();
+
+      // -------------------------------------------------------------
+      // PANEL 2: STRACKALINE 10-STEP SLOPE % HEATMAP (y: 378..756, center: 567)
+      // -------------------------------------------------------------
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 378, 540, 378);
+      ctx.clip();
+
+      ctx.fillStyle = "#0a1120";
+      ctx.fillRect(0, 378, 540, 378);
+
+      if (showSatellite) {
+        drawRotatedSatellite(ctx, greenCoord[0], greenCoord[1], appBearing, 270, 567, 10.8, 45, 30);
+        ctx.fillStyle = "rgba(10, 17, 32, 0.35)";
+        ctx.fillRect(0, 378, 540, 378);
+      }
+
+      if (greenFeat && greenFeat.coords && greenFeat.coords.length >= 3) {
+        // Clip to green polygon to draw heatmap & contours
+        ctx.save();
+        ctx.beginPath();
+        greenFeat.coords.forEach((c: number[], idx: number) => {
+          const pt = projectGreenApp(c[0], c[1], 567);
+          if (idx === 0) ctx.moveTo(pt.x, pt.y);
+          else ctx.lineTo(pt.x, pt.y);
+        });
+        ctx.closePath();
+        ctx.clip();
+
+        // 10-Step StrackaLine Heatmap gradient
+        const p2Grad = ctx.createRadialGradient(270, 567, 10, 270, 567, 140);
+        p2Grad.addColorStop(0.0, "rgba(6, 182, 212, 0.75)"); // 0-1% Cyan
+        p2Grad.addColorStop(0.2, "rgba(16, 185, 129, 0.75)"); // 1-2% Light Green
+        p2Grad.addColorStop(0.4, "rgba(45, 106, 79, 0.75)"); // 2-3% Dark Green
+        p2Grad.addColorStop(0.6, "rgba(249, 115, 22, 0.75)"); // 3-4% Orange
+        p2Grad.addColorStop(0.8, "rgba(239, 68, 68, 0.75)"); // 4-5% Red
+        p2Grad.addColorStop(1.0, "rgba(190, 24, 93, 0.75)"); // 5%+ Magenta
+        ctx.fillStyle = p2Grad;
+        ctx.fill();
+
+        // Contours (0.25ft / 0.5ft white rings)
+        if (showContours) {
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.75)";
+          ctx.lineWidth = 1.0;
+          for (let rYds = 4; rYds <= 22; rYds += 4) {
+            ctx.beginPath();
+            ctx.ellipse(270, 567, rYds * 10.8, rYds * 7.5, 0, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+        }
+
+        // White downhill slope arrows
+        if (showSlopeArrows) {
+          const arrowAngle = ((parseFloat(document.getElementById("meta-green-slope-dir")?.value) || 215) - appBearing) * Math.PI / 180;
+          const slopePctVal = parseFloat(document.getElementById("meta-green-slope-pct")?.value) || 2.8;
+          for (let gx = -16; gx <= 16; gx += 8) {
+            for (let gy = -14; gy <= 14; gy += 8) {
+              const ax = 270 + gx * 10.8;
+              const ay = 567 - gy * 10.8;
+              ctx.save();
+              ctx.translate(ax, ay);
+              ctx.rotate(arrowAngle);
+              ctx.strokeStyle = "#ffffff";
+              ctx.lineWidth = 1.8;
+              ctx.beginPath();
+              ctx.moveTo(0, 6); ctx.lineTo(0, -6);
+              ctx.stroke();
+              ctx.fillStyle = "#ffffff";
+              ctx.beginPath();
+              ctx.moveTo(0, -8); ctx.lineTo(-2.5, -3); ctx.lineTo(2.5, -3);
+              ctx.fill();
+              ctx.restore();
+
+              if ((gx + gy) % 16 === 0) {
+                ctx.fillStyle = "#ffffff";
+                ctx.font = "bold 8.5px 'JetBrains Mono', monospace";
+                ctx.textAlign = "center";
+                ctx.fillText(`${slopePctVal.toFixed(1)}%`, ax, ay + 12);
+              }
+            }
+          }
+        }
+        ctx.restore();
+
+        // Outline
+        ctx.beginPath();
+        greenFeat.coords.forEach((c: number[], idx: number) => {
+          const pt = projectGreenApp(c[0], c[1], 567);
+          if (idx === 0) ctx.moveTo(pt.x, pt.y);
+          else ctx.lineTo(pt.x, pt.y);
+        });
+        ctx.closePath();
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 2.0;
+        ctx.stroke();
+      }
+
+      // StrackaLine 6-color Legend Bar at bottom of Panel 2
+      const legendColors = ["#06b6d4", "#10b981", "#2d6a4f", "#f97316", "#ef4444", "#be185d"];
+      const legendLabels = ["0-1%", "1-2%", "2-3%", "3-4%", "4-5%", "5%+"];
+      const cellW = 55, barStartX = 95, barStartY = 730;
+
+      legendColors.forEach((col, idx) => {
+        const bx = barStartX + idx * cellW;
+        ctx.fillStyle = col;
+        ctx.fillRect(bx, barStartY, cellW, 10);
+        ctx.strokeStyle = "#1e293b";
+        ctx.strokeRect(bx, barStartY, cellW, 10);
+
+        ctx.fillStyle = "#cbd5e1";
+        ctx.font = "9px 'JetBrains Mono', monospace";
+        ctx.textAlign = "center";
+        ctx.fillText(legendLabels[idx], bx + cellW / 2, barStartY + 20);
+      });
+
+      // Panel 2 Title & Badges
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 13px Inter, sans-serif";
+      ctx.textAlign = "left";
+      ctx.fillText(`HOLE ${holeNum} — STRACKALINE SLOPE HEATMAP`, 20, 408);
+
+      ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
+      ctx.beginPath();
+      ctx.roundRect(420, 396, 100, 30, 6);
+      ctx.fill();
+      ctx.strokeStyle = "#f97316";
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 11px Inter, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(`DEPTH: ${model.greenDepthYards} YDS`, 470, 415);
+
+      // Fold Line at y = 756
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([8, 6]);
+      ctx.beginPath();
+      ctx.moveTo(0, 756); ctx.lineTo(540, 756);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+
+      // -------------------------------------------------------------
+      // PANEL 3: 1:480 VECTOR OUTLINE & PLAYER NOTES (y: 756..1512, center: 990)
+      // -------------------------------------------------------------
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 756, 540, 756);
+      ctx.clip();
+
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 756, 540, 756);
+
+      // 5-yard x 5-yard coordinate grid (gridSpacingPx = 54)
+      ctx.strokeStyle = "#e2e8f0";
+      ctx.lineWidth = 0.8;
+      for (let x = 54; x <= 486; x += 54) {
+        ctx.beginPath();
+        ctx.moveTo(x, 780); ctx.lineTo(x, 1200);
+        ctx.stroke();
+      }
+      for (let y = 780; y <= 1200; y += 54) {
+        ctx.beginPath();
+        ctx.moveTo(54, y); ctx.lineTo(486, y);
+        ctx.stroke();
+      }
+
+      // Greenside Bunkers (within 35 yards)
+      holeData.features.filter((f: any) => f.type === "bunker").forEach((bk: any) => {
+        if (!bk.coords || bk.coords.length < 3) return;
+        try {
+          const poly = turf.polygon([bk.coords]);
+          const center = turf.centroid(poly).geometry.coordinates;
+          const d = turf.distance(turf.point(center), turf.point(greenCoord), { units: "meters" }) * 1.0936133;
+          if (d < 35) {
+            ctx.beginPath();
+            bk.coords.forEach((c: number[], idx: number) => {
+              const pt = projectGreenApp(c[0], c[1], 990);
+              if (idx === 0) ctx.moveTo(pt.x, pt.y);
+              else ctx.lineTo(pt.x, pt.y);
+            });
+            ctx.closePath();
+            ctx.fillStyle = "#fbf4e6";
+            ctx.fill();
+            ctx.strokeStyle = "#78716c";
+            ctx.lineWidth = 1.2;
+            ctx.stroke();
+          }
+        } catch {}
+      });
+
+      // Concentric Collar Rings (1y, 3y, 5y)
+      if (greenFeat && greenFeat.coords && greenFeat.coords.length >= 3) {
+        [1, 3, 5].forEach((ringYds) => {
+          ctx.strokeStyle = "#94a3b8";
+          ctx.lineWidth = 0.9;
+          ctx.setLineDash([3, 3]);
+          ctx.beginPath();
+          greenFeat.coords.forEach((c: number[], idx: number) => {
+            const pt = projectGreenApp(c[0], c[1], 990);
+            const rX = 270 + (pt.x - 270) * (1 + (ringYds * 0.05));
+            const rY = 990 + (pt.y - 990) * (1 + (ringYds * 0.05));
+            if (idx === 0) ctx.moveTo(rX, rY);
+            else ctx.lineTo(rX, rY);
+          });
+          ctx.closePath();
+          ctx.stroke();
+        });
+        ctx.setLineDash([]);
+
+        // Green Vector
+        ctx.beginPath();
+        greenFeat.coords.forEach((c: number[], idx: number) => {
+          const pt = projectGreenApp(c[0], c[1], 990);
+          if (idx === 0) ctx.moveTo(pt.x, pt.y);
+          else ctx.lineTo(pt.x, pt.y);
+        });
+        ctx.closePath();
+        ctx.fillStyle = "#edf7ee";
+        ctx.fill();
+        ctx.strokeStyle = "#1b4332";
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+
+        // Perimeter Depth Ticks
+        const arrowAngle = ((parseFloat(document.getElementById("meta-green-slope-dir")?.value) || 215) - appBearing) * Math.PI / 180;
+        const slopePctVal = parseFloat(document.getElementById("meta-green-slope-pct")?.value) || 2.8;
+
+        for (let gy = -12; gy <= 12; gy += 6) {
+          const depthLabel = Math.round(15 + gy);
+          const pL = { x: 270 - 18 * 10.8, y: 990 - gy * 10.8 };
+          const pR = { x: 270 + 18 * 10.8, y: 990 - gy * 10.8 };
+
+          ctx.fillStyle = "#64748b";
+          ctx.font = "bold 9px 'JetBrains Mono', monospace";
+          ctx.textAlign = "right";
+          ctx.fillText(String(depthLabel), pL.x - 6, pL.y + 3);
+          ctx.textAlign = "left";
+          ctx.fillText(String(depthLabel), pR.x + 6, pR.y + 3);
+        }
+
+        // Green slope arrows on Panel 3
+        for (let gx = -12; gx <= 12; gx += 8) {
+          for (let gy = -10; gy <= 10; gy += 8) {
+            const ax = 270 + gx * 10.8;
+            const ay = 990 - gy * 10.8;
+            ctx.save();
+            ctx.translate(ax, ay);
+            ctx.rotate(arrowAngle);
+            ctx.strokeStyle = "#1b4332";
+            ctx.lineWidth = 1.4;
+            ctx.beginPath();
+            ctx.moveTo(0, 5); ctx.lineTo(0, -5);
+            ctx.stroke();
+            ctx.fillStyle = "#1b4332";
+            ctx.beginPath();
+            ctx.moveTo(0, -7); ctx.lineTo(-2, -3); ctx.lineTo(2, -3);
+            ctx.fill();
+            ctx.restore();
+          }
+        }
+      }
+
+      // Approach Compass Rose
+      drawCompassCanvas(ctx, 480, 810, appBearing);
+
+      // Player Notes Area (y: 1240..1460)
+      ctx.fillStyle = "#475569";
+      ctx.font = "bold 13px Inter, sans-serif";
+      ctx.textAlign = "left";
+      ctx.fillText("PLAYER NOTES", 40, 1240);
+
+      ctx.strokeStyle = "#cbd5e1";
+      ctx.lineWidth = 1.0;
+      for (let ly = 1265; ly <= 1450; ly += 24) {
+        ctx.beginPath();
+        ctx.moveTo(40, ly); ctx.lineTo(500, ly);
+        ctx.stroke();
+      }
+
+      // Panel 3 Footer Block
+      ctx.fillStyle = "#0f172a";
+      ctx.font = "bold 15px Inter, sans-serif";
+      ctx.textAlign = "left";
+      ctx.fillText(`HOLE ${holeNum} • PAR ${holePar} • ${holeYards} YDS`, 40, 1485);
+
+      ctx.fillStyle = "#059669";
+      ctx.font = "bold 13px Inter, sans-serif";
+      ctx.textAlign = "right";
+      ctx.fillText(courseName.toUpperCase(), 500, 1485);
+
+      ctx.restore();
+    }
+
+    function renderSpreads() {
       const model = computeSpatialHoleModel();
+      window.__lastSpatialModel = model;
+      renderHoleSpread(model);
+      renderGreenSpread(model);
+
+      const pillYds = document.getElementById("spread-yardage-pill");
+      if (pillYds) pillYds.textContent = `${model.totalHoleYards}y`;
+      const pillBrg = document.getElementById("spread-bearing-pill");
+      if (pillBrg) pillBrg.textContent = `${Math.round(model.holeBearingDeg)}° Brg`;
+
+      const telemBrg = document.getElementById("telemetry-bearing");
+      if (telemBrg) telemBrg.textContent = `${Math.round(model.holeBearingDeg)}°`;
+      const telemApp = document.getElementById("telemetry-app-bearing");
+      if (telemApp) telemApp.textContent = `${Math.round(model.approachBearingDeg)}°`;
+      const telemLen = document.getElementById("telemetry-length");
+      if (telemLen) telemLen.textContent = `${model.totalHoleYards}y`;
+      const telemDep = document.getElementById("telemetry-depth");
+      if (telemDep) telemDep.textContent = `${model.greenDepthYards}y`;
+    }
+
+    function renderYardageBookSVG() {
+      const model = computeSpatialHoleModel();
+      renderSpreads();
+
+      const svg = document.getElementById("yardage-book-svg");
+      if (!svg) return;
 
       const holeNum = document.getElementById("meta-hole-num").value || 1;
       const holePar = document.getElementById("meta-hole-par").value || 4;
@@ -3409,32 +4407,138 @@ let saveToNeonTimer: any = null;
       });
     });
 
-    document.getElementById("toggle-corridor-btn").addEventListener("click", (e) => {
-      showCorridorCutout = !showCorridorCutout;
-      e.currentTarget.classList.toggle("text-fuchsia-400", showCorridorCutout);
-      e.currentTarget.classList.toggle("border-fuchsia-500/50", showCorridorCutout);
-      e.currentTarget.classList.toggle("text-slate-500", !showCorridorCutout);
-      renderYardageBookSVG();
-      showToast(showCorridorCutout ? "Auto 20-Yard Fairway Cutout enabled" : "Auto Fairway Cutout disabled");
-    });
+    const toggleCorridorBtn = document.getElementById("toggle-corridor-btn");
+    if (toggleCorridorBtn) {
+      toggleCorridorBtn.addEventListener("click", (e) => {
+        showCorridorCutout = !showCorridorCutout;
+        e.currentTarget.classList.toggle("text-fuchsia-400", showCorridorCutout);
+        e.currentTarget.classList.toggle("border-fuchsia-500/50", showCorridorCutout);
+        e.currentTarget.classList.toggle("text-slate-500", !showCorridorCutout);
+        renderYardageBookSVG();
+        showToast(showCorridorCutout ? "Auto 20-Yard Fairway Cutout enabled" : "Auto Fairway Cutout disabled");
+      });
+    }
 
-    document.getElementById("toggle-ladders-btn").addEventListener("click", (e) => {
-      showLadders = !showLadders;
-      e.currentTarget.classList.toggle("text-emerald-400", showLadders);
-      e.currentTarget.classList.toggle("border-emerald-500/50", showLadders);
-      e.currentTarget.classList.toggle("text-slate-500", !showLadders);
-      renderYardageBookSVG();
-      showToast(showLadders ? "Margin yardage ladders enabled" : "Margin yardage ladders hidden");
-    });
+    const toggleLaddersBtn = document.getElementById("toggle-ladders-btn");
+    if (toggleLaddersBtn) {
+      toggleLaddersBtn.addEventListener("click", (e) => {
+        showLadders = !showLadders;
+        e.currentTarget.classList.toggle("text-emerald-400", showLadders);
+        e.currentTarget.classList.toggle("border-emerald-500/50", showLadders);
+        e.currentTarget.classList.toggle("text-slate-500", !showLadders);
+        renderYardageBookSVG();
+        showToast(showLadders ? "Margin yardage ladders enabled" : "Margin yardage ladders hidden");
+      });
+    }
 
-    document.getElementById("toggle-hachures-btn").addEventListener("click", (e) => {
-      showHachures = !showHachures;
-      e.currentTarget.classList.toggle("text-emerald-400", showHachures);
-      e.currentTarget.classList.toggle("border-emerald-500/50", showHachures);
-      e.currentTarget.classList.toggle("text-slate-500", !showHachures);
-      renderYardageBookSVG();
-      showToast(showHachures ? "Bank & ridge hachures enabled" : "Hachures hidden");
-    });
+    const toggleHachuresBtn = document.getElementById("toggle-hachures-btn");
+    if (toggleHachuresBtn) {
+      toggleHachuresBtn.addEventListener("click", (e) => {
+        showHachures = !showHachures;
+        e.currentTarget.classList.toggle("text-emerald-400", showHachures);
+        e.currentTarget.classList.toggle("border-emerald-500/50", showHachures);
+        e.currentTarget.classList.toggle("text-slate-500", !showHachures);
+        renderYardageBookSVG();
+        showToast(showHachures ? "Bank & ridge hachures enabled" : "Hachures hidden");
+      });
+    }
+
+    // New 2-Spread Layer Toggles
+    const toggleSatBtn = document.getElementById("toggle-satellite-btn");
+    if (toggleSatBtn) {
+      toggleSatBtn.addEventListener("click", () => {
+        showSatellite = !showSatellite;
+        toggleSatBtn.classList.toggle("text-emerald-400", showSatellite);
+        toggleSatBtn.classList.toggle("text-slate-500", !showSatellite);
+        renderSpreads();
+        showToast(showSatellite ? "Satellite background enabled" : "Satellite background hidden");
+      });
+    }
+
+    const toggleArcsBtn = document.getElementById("toggle-arcs-btn");
+    if (toggleArcsBtn) {
+      toggleArcsBtn.addEventListener("click", () => {
+        showArcs = !showArcs;
+        toggleArcsBtn.classList.toggle("text-amber-400", showArcs);
+        toggleArcsBtn.classList.toggle("text-slate-500", !showArcs);
+        renderSpreads();
+        showToast(showArcs ? "Distance arcs enabled" : "Distance arcs hidden");
+      });
+    }
+
+    const toggleContoursBtn = document.getElementById("toggle-contours-btn");
+    if (toggleContoursBtn) {
+      toggleContoursBtn.addEventListener("click", () => {
+        showContours = !showContours;
+        toggleContoursBtn.classList.toggle("text-sky-400", showContours);
+        toggleContoursBtn.classList.toggle("text-slate-500", !showContours);
+        renderSpreads();
+        showToast(showContours ? "Topographic contours enabled" : "Contours hidden");
+      });
+    }
+
+    const toggleArrowsBtn = document.getElementById("toggle-arrows-btn");
+    if (toggleArrowsBtn) {
+      toggleArrowsBtn.addEventListener("click", () => {
+        showSlopeArrows = !showSlopeArrows;
+        toggleArrowsBtn.classList.toggle("text-teal-300", showSlopeArrows);
+        toggleArrowsBtn.classList.toggle("text-slate-500", !showSlopeArrows);
+        renderSpreads();
+        showToast(showSlopeArrows ? "Slope break arrows enabled" : "Slope arrows hidden");
+      });
+    }
+
+    async function loadSavedCoursesDropdown() {
+      const sel = document.getElementById("saved-courses-select") as HTMLSelectElement | null;
+      if (!sel) return;
+      try {
+        const courses = await apiClient.getCourses();
+        if (!courses || courses.length === 0) {
+          sel.innerHTML = '<option value="">No Saved Courses in Neon</option>';
+          return;
+        }
+        sel.innerHTML = '<option value="">Saved Courses (Neon)...</option>' + courses.map((c: any) => {
+          const loc = [c.city, c.state].filter(Boolean).join(", ");
+          const holesBadge = c.holes_count ? ` (${c.holes_count}h)` : "";
+          return `<option value="${c.id}">${c.name}${loc ? " — " + loc : ""}${holesBadge}</option>`;
+        }).join("");
+      } catch (err) {
+        console.warn("loadSavedCoursesDropdown error:", err);
+      }
+    }
+
+    const savedCoursesSel = document.getElementById("saved-courses-select");
+    if (savedCoursesSel) {
+      savedCoursesSel.addEventListener("change", async (e: any) => {
+        const cId = e.target.value;
+        if (cId) {
+          await loadCourseFromNeon(cId);
+        }
+      });
+    }
+
+    const resyncOsmBtn = document.getElementById("resync-osm-btn");
+    if (resyncOsmBtn) {
+      resyncOsmBtn.addEventListener("click", async () => {
+        if (!activeNeonCourseId) {
+          showToast("Select a course first to re-sync from OSM.");
+          return;
+        }
+        showToast("Re-syncing 18 holes from OpenStreetMap into Neon...");
+        setStatus("Fetching course geometry and all 18 holes from Overpass...");
+        try {
+          const res = await apiClient.getCourse(activeNeonCourseId, true);
+          if (res && res.course) {
+            await loadCourseFromNeon(activeNeonCourseId);
+            showToast(`Re-synced 18 holes from OSM into Neon for ${res.course.name}!`);
+          } else {
+            showToast("OSM re-sync completed.");
+          }
+        } catch (err: any) {
+          showToast("OSM re-sync failed: " + (err.message || "Overpass error"));
+        }
+      });
+    }
 
     // Save Full 18-Hole Course Project (.json) to Disk
     document.getElementById("save-project-btn").addEventListener("click", () => {
@@ -3598,38 +4702,27 @@ let saveToNeonTimer: any = null;
       }
     });
 
-    window.addEventListener("DOMContentLoaded", () => {
-      lucide.createIcons();
+    window.addEventListener("DOMContentLoaded", async () => {
+      if (typeof lucide !== "undefined") lucide.createIcons();
       initFallbackMapHole();
-      
-      // Check Neon Postgres on boot
-      apiClient.getCourses().then(async (neonCourses) => {
+      await loadSavedCoursesDropdown();
+
+      // Neon-first boot: load courses from Neon in <100ms
+      try {
+        const neonCourses = await apiClient.getCourses();
         if (neonCourses && neonCourses.length > 0) {
           console.log("Neon Postgres courses available:", neonCourses.length);
-          const restored = loadStateFromLocalStorage();
-          if (!restored) {
-            // Load latest course from Neon if local storage is blank
-            const first = neonCourses[0];
-            const fullCourse = await apiClient.getCourse(first.id);
-            if (fullCourse && fullCourse.course && fullCourse.holes && fullCourse.holes.length > 0) {
-              activeNeonCourseId = fullCourse.course.id;
-              document.getElementById("meta-course-name").value = fullCourse.course.name;
-              fullCourse.holes.forEach(hr => {
-                const hN = hr.hole_number;
-                courseHolesStore[hN] = {
-                  meta: { holeNumber: hN, par: hr.par || 4, handicap: hr.handicap, greenSlopeDir: 215, greenSlopePct: 2.8, courseName: fullCourse.course.name },
-                  lidarGrid: hr.lidar_grid || null,
-                  features: Array.isArray(hr.features) && hr.features.length > 0 ? hr.features : []
-                };
-              });
-              map.setView([fullCourse.course.center_lat, fullCourse.course.center_lon], 16);
-              refreshHoleDropdownBadges();
-              switchToHoleNumber(1);
-              showToast("Loaded " + fullCourse.course.name + " from Neon Postgres!");
-            }
-          }
+          // Look for Lakeview or select first course
+          const lakeview = neonCourses.find((c: any) => c.name.toLowerCase().includes("lakeview"));
+          const selected = lakeview || neonCourses[0];
+          const savedSel = document.getElementById("saved-courses-select") as HTMLSelectElement | null;
+          if (savedSel) savedSel.value = selected.id;
+          await loadCourseFromNeon(selected.id);
+          return;
         }
-      }).catch(e => console.warn("Neon boot check:", e));
+      } catch (e) {
+        console.warn("Neon boot check:", e);
+      }
 
       const restored = loadStateFromLocalStorage();
       syncMapFromState(!restored);

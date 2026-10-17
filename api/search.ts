@@ -1,5 +1,24 @@
 import { sql } from './db';
 
+async function upsertCourseToNeon(name: string, city: string, state: string, lat: number, lon: number) {
+  try {
+    const rows = await sql`
+      INSERT INTO courses (name, city, state, center_lat, center_lon)
+      VALUES (${name}, ${city || null}, ${state || 'ID'}, ${lat}, ${lon})
+      ON CONFLICT (name) DO UPDATE SET
+        center_lat = EXCLUDED.center_lat,
+        center_lon = EXCLUDED.center_lon,
+        city = COALESCE(EXCLUDED.city, courses.city),
+        state = COALESCE(EXCLUDED.state, courses.state)
+      RETURNING *;
+    `;
+    return rows[0];
+  } catch (err) {
+    console.warn('Upsert course error for', name, err);
+    return null;
+  }
+}
+
 export default async function handler(req: any, res: any) {
   // CORS
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -21,7 +40,7 @@ export default async function handler(req: any, res: any) {
   const results: any[] = [];
   const seenKeys = new Set<string>();
 
-  // 1. Search saved courses in Neon Postgres
+  // 1. Search saved courses in Neon Postgres first (<50ms)
   try {
     const searchPattern = `%${query}%`;
     const neonRows = await sql`
@@ -45,7 +64,7 @@ export default async function handler(req: any, res: any) {
         lon: parseFloat(r.center_lon),
         badge: 'Neon DB',
         isNeon: true,
-        holesCount: r.holes_count || 18
+        holesCount: r.holes_count || 0
       });
     });
   } catch (err) {
@@ -92,7 +111,7 @@ export default async function handler(req: any, res: any) {
     }
 
     if (centerLat !== null && centerLon !== null) {
-      // Query Overpass for golf courses near zip
+      // Query Overpass for all golf courses near zip (25km radius)
       const radiusMeters = 25000;
       const overpassQuery = `[out:json][timeout:25];(way["leisure"="golf_course"](around:${radiusMeters},${centerLat},${centerLon});relation["leisure"="golf_course"](around:${radiusMeters},${centerLat},${centerLon});way["golf"="course"](around:${radiusMeters},${centerLat},${centerLon}););out center tags;`;
       
@@ -115,31 +134,40 @@ export default async function handler(req: any, res: any) {
           if (opRes.ok) {
             const opData = await opRes.json();
             if (opData.elements) {
-              opData.elements.forEach((el: any) => {
+              for (const el of opData.elements) {
                 const name = el.tags?.name || 'Golf Course (Unnamed in OSM)';
                 const lat = el.center?.lat || el.lat;
                 const lon = el.center?.lon || el.lon;
-                if (!lat || !lon) return;
+                if (!lat || !lon) continue;
 
                 const key = `${name.toLowerCase()}-${parseFloat(lat).toFixed(2)}`;
-                if (seenKeys.has(key)) return;
+                if (seenKeys.has(key)) continue;
                 seenKeys.add(key);
 
-                // calculate approx distance in miles
+                const city = el.tags?.['addr:city'] || zipCity;
+                const state = el.tags?.['addr:state'] || zipState || 'ID';
+
+                // Automatically UPSERT discovered course into Neon Postgres!
+                const savedCourse = await upsertCourseToNeon(name, city, state, parseFloat(lat), parseFloat(lon));
+
                 const dLat = (lat - centerLat!) * 69;
                 const dLon = (lon - centerLon!) * 53;
                 const distMiles = Math.hypot(dLat, dLon).toFixed(1);
 
                 results.push({
+                  id: savedCourse ? savedCourse.id : key,
+                  neonId: savedCourse ? savedCourse.id : null,
                   name,
-                  city: el.tags?.['addr:city'] || zipCity,
-                  state: el.tags?.['addr:state'] || zipState,
+                  city,
+                  state,
                   postcode: el.tags?.['addr:postcode'] || zip,
                   lat: parseFloat(lat),
                   lon: parseFloat(lon),
-                  badge: `${distMiles} mi from ${zip}`
+                  badge: `${distMiles} mi from ${zip}`,
+                  isNeon: Boolean(savedCourse),
+                  holesCount: 0
                 });
-              });
+              }
               break;
             }
           }
@@ -147,7 +175,7 @@ export default async function handler(req: any, res: any) {
       }
     }
   } else {
-    // 3. Search Nominatim by Course Name
+    // 3. Search by Name / City via Nominatim & Overpass
     const golfQuery = /golf|country club|links|cc|gc/i.test(query) ? query : `${query} golf`;
     try {
       const nomUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(golfQuery)}&addressdetails=1&extratags=1&limit=12`;
@@ -165,30 +193,37 @@ export default async function handler(req: any, res: any) {
       }
 
       if (Array.isArray(nomData)) {
-        nomData.forEach((item: any) => {
+        for (const item of nomData) {
           const addr = item.address || {};
           const name = item.name || addr.golf_course || addr.leisure || item.display_name.split(',')[0];
           const city = addr.city || addr.town || addr.village || addr.municipality || addr.county || '';
-          const state = addr.state || addr.region || '';
+          const state = addr.state || addr.region || 'ID';
           const postcode = addr.postcode || '';
           const lat = parseFloat(item.lat);
           const lon = parseFloat(item.lon);
           const isGolf = item.type === 'golf_course' || item.class === 'leisure' || /golf|club|links/i.test(name);
 
           const key = `${name.toLowerCase()}-${lat.toFixed(2)}`;
-          if (seenKeys.has(key)) return;
+          if (seenKeys.has(key)) continue;
           seenKeys.add(key);
 
+          // UPSERT into Neon Postgres immediately!
+          const savedCourse = await upsertCourseToNeon(name, city, state, lat, lon);
+
           results.push({
+            id: savedCourse ? savedCourse.id : key,
+            neonId: savedCourse ? savedCourse.id : null,
             name,
             city,
             state,
             postcode,
             lat,
             lon,
-            badge: isGolf ? 'Golf Course' : item.type || 'Location'
+            badge: isGolf ? 'Golf Course' : item.type || 'Location',
+            isNeon: Boolean(savedCourse),
+            holesCount: 0
           });
-        });
+        }
       }
     } catch (err) {
       console.warn('Nominatim name search error:', err);

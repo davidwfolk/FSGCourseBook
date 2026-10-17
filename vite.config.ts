@@ -32,6 +32,8 @@ export default defineConfig(({ mode }) => {
               routeFile = path.resolve(process.cwd(), 'api/search.ts');
             } else if (pathname === '/api/overpass') {
               routeFile = path.resolve(process.cwd(), 'api/overpass.ts');
+            } else if (pathname === '/api/elevation') {
+              routeFile = path.resolve(process.cwd(), 'api/elevation.ts');
             } else {
               return next();
             }

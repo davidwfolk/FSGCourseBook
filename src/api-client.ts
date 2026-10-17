@@ -62,13 +62,32 @@ export const apiClient = {
   /**
    * Fetch a single course and its 18 holes from Neon Postgres
    */
-  async getCourse(courseId: string): Promise<{ course: CourseRecord; holes: HoleRecord[]; yardage_book?: YardageBookRecord } | null> {
+  async getCourse(courseId: string, syncOsm: boolean = false): Promise<{ course: CourseRecord; holes: HoleRecord[]; yardage_book?: YardageBookRecord } | null> {
     try {
-      const res = await fetch(`/api/courses?id=${encodeURIComponent(courseId)}`);
+      const url = `/api/courses?id=${encodeURIComponent(courseId)}${syncOsm ? '&sync_osm=true' : ''}`;
+      const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.json();
     } catch (err) {
       console.warn('apiClient.getCourse failed:', err);
+      return null;
+    }
+  },
+
+  /**
+   * Fetch 7x7 real elevation grid for green complex
+   */
+  async getGreenElevationGrid(lat: number, lon: number, courseId?: string, holeNumber?: number): Promise<any | null> {
+    try {
+      let url = `/api/elevation?lat=${lat}&lon=${lon}`;
+      if (courseId) url += `&course_id=${encodeURIComponent(courseId)}`;
+      if (holeNumber) url += `&hole_number=${holeNumber}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      return data.grid || null;
+    } catch (err) {
+      console.warn('apiClient.getGreenElevationGrid failed:', err);
       return null;
     }
   },
