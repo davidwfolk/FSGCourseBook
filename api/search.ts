@@ -42,14 +42,20 @@ export default async function handler(req: any, res: any) {
 
   // 1. Search saved courses in Neon Postgres first (<50ms)
   try {
+    const rawTokens = query.toLowerCase().replace(/golf|course|club|country|links|cc|gc/gi, ' ').trim().split(/\s+/).filter(Boolean);
     const searchPattern = `%${query}%`;
+    const tokenPattern = rawTokens.length > 0 ? `%${rawTokens[0]}%` : searchPattern;
+
     const neonRows = await sql`
       SELECT c.*, COUNT(ch.id)::int as holes_count
       FROM courses c
       LEFT JOIN course_holes ch ON c.id = ch.course_id
-      WHERE c.name ILIKE ${searchPattern} OR c.city ILIKE ${searchPattern}
+      WHERE c.name ILIKE ${searchPattern}
+         OR c.name ILIKE ${tokenPattern}
+         OR c.city ILIKE ${searchPattern}
+         OR c.city ILIKE ${tokenPattern}
       GROUP BY c.id
-      ORDER BY c.created_at DESC;
+      ORDER BY holes_count DESC, c.created_at DESC;
     `;
     neonRows.forEach((r: any) => {
       const key = `${r.name.toLowerCase()}-${parseFloat(r.center_lat).toFixed(2)}`;

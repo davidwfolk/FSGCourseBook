@@ -1189,23 +1189,25 @@ let saveToNeonTimer: any = null;
 
           selectedFeatureId = null;
           document.getElementById("feature-inspector").classList.add("hidden");
-          document.getElementById("preset-select").value = "empty";
-
-          // Clear previous hole features to avoid fitBounds snapping back to preset!
-          holeData.features = [];
-          holeData.lidarGrid = null;
-          courseHolesStore = {};
-
-          // Move the map immediately to the selected course coordinates!
-          map.setView([chosen.lat, chosen.lon], 16);
-          setTimeout(() => { map.invalidateSize(); }, 200);
 
           if (chosen.isNeon && chosen.neonId) {
-            // Load from Neon Postgres
+            // Load directly from Neon Postgres
             await loadCourseFromNeon(chosen.neonId);
           } else {
-            // Load and cache from Overpass
-            await cacheAll18HolesFromOverpass(chosen.lat, chosen.lon, cleanCourseName);
+            // Check if course already exists in Neon before hitting Overpass!
+            const neonCourses = await apiClient.getCourses();
+            const matched = neonCourses.find((nc: any) =>
+              nc.name.toLowerCase().includes(cleanCourseName.toLowerCase()) ||
+              cleanCourseName.toLowerCase().includes(nc.name.toLowerCase()) ||
+              (Math.abs(nc.center_lat - chosen.lat) < 0.02 && Math.abs(nc.center_lon - chosen.lon) < 0.02)
+            );
+            if (matched) {
+              await loadCourseFromNeon(matched.id);
+            } else {
+              // Move map and load from Overpass
+              map.setView([chosen.lat, chosen.lon], 16);
+              await cacheAll18HolesFromOverpass(chosen.lat, chosen.lon, cleanCourseName);
+            }
           }
         });
       });
@@ -1225,8 +1227,14 @@ let saveToNeonTimer: any = null;
       const cleanCourseName = c.name.replace(/Golf Course|Golf Club|Country Club|GC|CC/gi, "").trim() || c.name;
       document.getElementById("meta-course-name").value = cleanCourseName;
 
-      courseHolesStore = {};
+      const savedSel = document.getElementById("saved-courses-select") as HTMLSelectElement | null;
+      if (savedSel) savedSel.value = c.id;
+
+      const searchInputEl = document.getElementById("course-search-input") as HTMLInputElement | null;
+      if (searchInputEl) searchInputEl.value = c.name;
+
       if (data.holes && data.holes.length > 0) {
+        courseHolesStore = {};
         data.holes.forEach((h: any) => {
           const hNum = h.hole_number;
           let features: any[] = [];
@@ -1293,13 +1301,11 @@ let saveToNeonTimer: any = null;
         });
 
         refreshHoleDropdownBadges();
+        // Switch to Hole 1 and let it fit bounds directly to Hole 1's tee-to-green corridor!
         switchToHoleNumber(1, true);
-        if (c.center_lat && c.center_lon) {
-          map.setView([parseFloat(c.center_lat), parseFloat(c.center_lon)], 16);
-        }
         showToast(`Loaded ${data.holes.length} holes from Neon database!`);
       } else {
-        // Fallback to Overpass if Neon course has no holes yet
+        // Fallback to Overpass only if Neon course has 0 holes
         await cacheAll18HolesFromOverpass(parseFloat(c.center_lat), parseFloat(c.center_lon), cleanCourseName);
       }
     }
