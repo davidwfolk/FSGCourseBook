@@ -17,6 +17,7 @@ export interface MatchedHole {
   fairways_geojson: any[];
   bunkers_geojson: any[];
   water_geojson?: any[];
+  tees_geojson?: any[];
   features?: any[];
 }
 
@@ -34,6 +35,7 @@ export function matchOsmHoles(osmData: any, courseNameFallback: string) {
   const fairwayPolygons: Array<{ id: string; coords: number[][]; center: [number, number]; polygon: any }> = [];
   const bunkerPolygons: Array<{ id: string; coords: number[][]; center: [number, number]; polygon: any }> = [];
   const waterPolygons: Array<{ id: string; coords: number[][]; center: [number, number]; polygon: any }> = [];
+  const teePolygons: Array<{ id: string; coords: number[][]; center: [number, number]; polygon: any }> = [];
   const treeNodes: Array<{ id: string; coords: [number, number] }> = [];
 
   for (const el of osmData.elements) {
@@ -70,6 +72,8 @@ export function matchOsmHoles(osmData: any, courseNameFallback: string) {
               bunkerPolygons.push({ id: `osm-bunker-${el.id}`, coords: ring, center, polygon: poly });
             } else if (gType.includes('water') || nType === 'water' || Boolean(wType)) {
               waterPolygons.push({ id: `osm-water-${el.id}`, coords: ring, center, polygon: poly });
+            } else if (gType === 'tee') {
+              teePolygons.push({ id: `osm-tee-${el.id}`, coords: ring, center, polygon: poly });
             }
           } catch {}
         }
@@ -178,7 +182,7 @@ export function matchOsmHoles(osmData: any, courseNameFallback: string) {
             const d = turf.pointToLineDistance(turf.point(c), clLine, { units: 'meters' });
             if (d < minM) minM = d;
           }
-          if (minM <= 35 || turf.booleanIntersects(fw.polygon, clLine)) {
+          if (minM <= 50 || turf.booleanIntersects(fw.polygon, clLine)) {
             holeFairways.push(fw.polygon);
           }
         } catch {}
@@ -195,7 +199,7 @@ export function matchOsmHoles(osmData: any, courseNameFallback: string) {
             const dg = turf.distance(turf.point(c), pinPt, { units: 'meters' });
             if (dg < minGreenM) minGreenM = dg;
           }
-          if (minM <= 50 || minGreenM <= 45) {
+          if (minM <= 100 || minGreenM <= 65) {
             holeBunkers.push(b.polygon);
           }
         } catch {}
@@ -212,8 +216,18 @@ export function matchOsmHoles(osmData: any, courseNameFallback: string) {
             const dg = turf.distance(turf.point(c), pinPt, { units: 'meters' });
             if (dg < minGreenM) minGreenM = dg;
           }
-          if (minM <= 65 || minGreenM <= 55) {
+          if (minM <= 100 || minGreenM <= 80) {
             holeWater.push(w.polygon);
+          }
+        } catch {}
+      }
+
+      const holeTees: any[] = [];
+      for (const t of teePolygons) {
+        try {
+          const dt = turf.distance(turf.point(t.center), turf.point([tee_lon, tee_lat]), { units: 'meters' });
+          if (dt <= 45) {
+            holeTees.push(t.polygon);
           }
         } catch {}
       }
@@ -225,6 +239,15 @@ export function matchOsmHoles(osmData: any, courseNameFallback: string) {
         type: 'tee',
         coords: [tee_lon, tee_lat],
         props: { label: 'Back Tee', elev: 0 }
+      });
+      // 1B. Matched Tee Polygons
+      holeTees.forEach((tPoly, idx) => {
+        holeFeatures.push({
+          id: `tee-poly-${hNum}-${idx}`,
+          type: 'tee_polygon',
+          coords: tPoly.geometry?.coordinates?.[0] || tPoly.coordinates?.[0],
+          props: {}
+        });
       });
       // 2. Centerline
       holeFeatures.push({
@@ -275,7 +298,7 @@ export function matchOsmHoles(osmData: any, courseNameFallback: string) {
           const pt = turf.point(tr.coords);
           const d = turf.pointToLineDistance(pt, clLine, { units: 'meters' });
           const dg = turf.distance(pt, pinPt, { units: 'meters' });
-          if (d <= 38 || dg <= 32) {
+          if (d <= 60 || dg <= 45) {
             holeFeatures.push({
               id: tr.id,
               type: 'tree',
@@ -303,6 +326,7 @@ export function matchOsmHoles(osmData: any, courseNameFallback: string) {
         fairways_geojson: holeFairways,
         bunkers_geojson: holeBunkers,
         water_geojson: holeWater,
+        tees_geojson: holeTees,
         features: holeFeatures
       });
     }
