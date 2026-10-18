@@ -11,6 +11,21 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
+    if (req.method === 'POST') {
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      const { course_id, hole_number, lidar_grid } = body;
+      if (!course_id || !hole_number) {
+        return res.status(400).json({ error: 'course_id and hole_number are required' });
+      }
+      const hNum = parseInt(hole_number, 10);
+      await sql`
+        UPDATE course_holes
+        SET lidar_grid = ${lidar_grid ? JSON.stringify(lidar_grid) : null}::jsonb
+        WHERE course_id = ${course_id} AND hole_number = ${hNum};
+      `;
+      return res.status(200).json({ success: true, saved: true });
+    }
+
     const url = new URL(req.url, `http://${req.headers?.host || 'localhost'}`);
     const latStr = url.searchParams.get('lat') || req.query?.lat;
     const lonStr = url.searchParams.get('lon') || req.query?.lon;

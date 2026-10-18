@@ -640,7 +640,13 @@ let saveToNeonTimer: any = null;
                 poly.setLatLngs(feat.coords.slice(0, -1).map((c) => [c[1], c[0]]));
                 renderYardageBookSVG();
               });
-              vm.on("dragend", () => saveStateToLocalStorage());
+              vm.on("dragend", () => {
+                if (feat.type === "green") {
+                  holeData.lidarGrid = null;
+                  invalidateGreenCache();
+                }
+                saveStateToLocalStorage();
+              });
             });
           }
         }
@@ -1690,31 +1696,7 @@ let saveToNeonTimer: any = null;
         // Auto-generate fairway layup dots if not already present
         autoPopulateFairwayDots(false);
 
-        // Auto-generate green contours & slope arrows if not present
-        if (!holeData.lidarGrid) {
-          const gFeat = holeData.features.find((f: any) => f.type === "green");
-          if (gFeat && gFeat.coords && gFeat.coords.length >= 4) {
-            const model = computeSpatialHoleModel();
-            const pctVal = parseFloat((document.getElementById("meta-green-slope-pct") as HTMLInputElement)?.value) || 2.8;
-            const dirVal = parseFloat((document.getElementById("meta-green-slope-dir") as HTMLInputElement)?.value) || 215;
-            holeData.lidarGrid = generateSyntheticLidarGrid(
-              model,
-              gFeat,
-              pctVal,
-              dirVal
-            );
-            // Fetch real elevation grid from Open-Meteo in background and cache in Neon
-            try {
-              const gCenter = turf.centroid(turf.polygon([gFeat.coords])).geometry.coordinates;
-              apiClient.getGreenElevationGrid(gCenter[1], gCenter[0], activeNeonCourseId || undefined, hNum).then((realGrid) => {
-                if (realGrid) {
-                  holeData.lidarGrid = realGrid;
-                  renderSpreads();
-                }
-              }).catch(() => {});
-            } catch (e) {}
-          }
-        }
+
 
         syncMapFromState(true);
         renderSpreads();
@@ -2144,8 +2126,15 @@ let saveToNeonTimer: any = null;
     }
     document.getElementById("lidar-fetch-btn")?.addEventListener("click", () => {
       invalidateGreenCache();
-      triggerLidarFetch(false);
+      holeData.lidarGrid = null;
+      const hNum = holeData.meta?.holeNumber || 1;
+      if (courseHolesStore[hNum]) {
+        courseHolesStore[hNum].lidarGrid = null;
+      }
+      const model = computeSpatialHoleModel();
+      triggerPythonGreenRender(model, true);
       renderSpreads();
+      showToast(`Fetching real USGS 3DEP 1m LiDAR from Python engine...`);
     });
 
     /********************************************************************
@@ -2199,8 +2188,9 @@ let saveToNeonTimer: any = null;
       const holeBearingDeg = (turf.bearing(turf.point(teeCoord), turf.point(greenCentroidCoord)) + 360) % 360;
 
       // 2. Green Approach Bearing (From last fairway dogleg pivot -> Green Center, used to orient USGA 1:480 Green view & Top Compass!)
+      const currentHolePar = parseInt((document.getElementById("meta-hole-par") as HTMLInputElement)?.value || "4", 10) || 4;
       let approachOriginCoord = teeCoord;
-      if (centerFeat && centerFeat.coords.length >= 3) {
+      if (currentHolePar > 3 && centerFeat && centerFeat.coords.length >= 3) {
         // Pick the penultimate node (the dogleg / approach point in the fairway)
         for (let i = centerFeat.coords.length - 2; i >= 0; i--) {
           const dToGreen = turf.distance(turf.point(centerFeat.coords[i]), turf.point(greenCentroidCoord), { units: "meters" }) * M_TO_YARD;
@@ -2209,8 +2199,13 @@ let saveToNeonTimer: any = null;
             break;
           }
         }
-      } else if (fwFeat && fwFeat.coords.length >= 4) {
-        approachOriginCoord = turf.centroid(turf.polygon([fwFeat.coords])).geometry.coordinates;
+      } else if (currentHolePar > 3 && fwFeat && fwFeat.coords.length >= 4) {
+        const fwCentroid = turf.centroid(turf.polygon([fwFeat.coords])).geometry.coordinates;
+        const distTeeGreen = turf.distance(turf.point(teeCoord), turf.point(greenCentroidCoord), { units: "meters" });
+        const distFwGreen = turf.distance(turf.point(fwCentroid), turf.point(greenCentroidCoord), { units: "meters" });
+        if (distFwGreen < distTeeGreen && distFwGreen > 30) {
+          approachOriginCoord = fwCentroid;
+        }
       }
       const approachBearingDeg = (turf.bearing(turf.point(approachOriginCoord), turf.point(greenCentroidCoord)) + 360) % 360;
 
@@ -3160,16 +3155,39 @@ let saveToNeonTimer: any = null;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
       }
 
+      // Quadratic Bezier Curve Polygon Smoother through midpoints
+      function drawSmoothPolygon(ctx: CanvasRenderingContext2D, points: { x: number; y: number }[]) {
+        if (!points || points.length < 3) return;
+        const pts = [...points];
+        if (pts.length > 3 && Math.hypot(pts[0].x - pts[pts.length - 1].x, pts[0].y - pts[pts.length - 1].y) < 0.001) {
+          pts.pop();
+        }
+        const n = pts.length;
+        if (n < 3) return;
+
+        const lastPt = pts[n - 1];
+        const firstPt = pts[0];
+        const startMidX = (lastPt.x + firstPt.x) / 2;
+        const startMidY = (lastPt.y + firstPt.y) / 2;
+
+        ctx.beginPath();
+        ctx.moveTo(startMidX, startMidY);
+
+        for (let i = 0; i < n; i++) {
+          const cur = pts[i];
+          const next = pts[(i + 1) % n];
+          const midX = (cur.x + next.x) / 2;
+          const midY = (cur.y + next.y) / 2;
+          ctx.quadraticCurveTo(cur.x, cur.y, midX, midY);
+        }
+        ctx.closePath();
+      }
+
       // 2. Water Hazards
       holeData.features.filter((f: any) => f.type === "water").forEach((wf: any) => {
         if (!wf.coords || wf.coords.length < 3) return;
-        ctx.beginPath();
-        wf.coords.forEach((c: number[], idx: number) => {
-          const pt = projectHole(c[0], c[1]);
-          if (idx === 0) ctx.moveTo(pt.x, pt.y);
-          else ctx.lineTo(pt.x, pt.y);
-        });
-        ctx.closePath();
+        const pts = wf.coords.map((c: number[]) => projectHole(c[0], c[1]));
+        drawSmoothPolygon(ctx, pts);
         ctx.fillStyle = "rgba(56, 189, 248, 0.45)";
         ctx.fill();
         ctx.strokeStyle = "#38bdf8";
@@ -3202,13 +3220,8 @@ let saveToNeonTimer: any = null;
       });
 
       fairwaysToDraw.forEach((fw: any) => {
-        ctx.beginPath();
-        fw.coords.forEach((c: number[], idx: number) => {
-          const pt = projectHole(c[0], c[1]);
-          if (idx === 0) ctx.moveTo(pt.x, pt.y);
-          else ctx.lineTo(pt.x, pt.y);
-        });
-        ctx.closePath();
+        const pts = fw.coords.map((c: number[]) => projectHole(c[0], c[1]));
+        drawSmoothPolygon(ctx, pts);
         ctx.fillStyle = "rgba(225, 255, 235, 0.55)";
         ctx.fill();
         ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
@@ -3219,13 +3232,8 @@ let saveToNeonTimer: any = null;
       // 4. Tee Polygons & Tee Marker
       holeData.features.filter((f: any) => f.type === "tee_polygon").forEach((tp: any) => {
         if (!tp.coords || tp.coords.length < 3) return;
-        ctx.beginPath();
-        tp.coords.forEach((c: number[], idx: number) => {
-          const pt = projectHole(c[0], c[1]);
-          if (idx === 0) ctx.moveTo(pt.x, pt.y);
-          else ctx.lineTo(pt.x, pt.y);
-        });
-        ctx.closePath();
+        const pts = tp.coords.map((c: number[]) => projectHole(c[0], c[1]));
+        drawSmoothPolygon(ctx, pts);
         ctx.fillStyle = "rgba(255, 255, 255, 0.88)";
         ctx.fill();
         ctx.strokeStyle = "#1c1917";
@@ -3244,13 +3252,8 @@ let saveToNeonTimer: any = null;
       // 5. Bunkers
       holeData.features.filter((f: any) => f.type === "bunker").forEach((bk: any) => {
         if (!bk.coords || bk.coords.length < 3) return;
-        ctx.beginPath();
-        bk.coords.forEach((c: number[], idx: number) => {
-          const pt = projectHole(c[0], c[1]);
-          if (idx === 0) ctx.moveTo(pt.x, pt.y);
-          else ctx.lineTo(pt.x, pt.y);
-        });
-        ctx.closePath();
+        const pts = bk.coords.map((c: number[]) => projectHole(c[0], c[1]));
+        drawSmoothPolygon(ctx, pts);
         ctx.fillStyle = "#ffffff";
         ctx.fill();
         ctx.strokeStyle = "#1c1917";
@@ -3260,13 +3263,8 @@ let saveToNeonTimer: any = null;
 
       // 6. Green Complex
       if (greenFeat && greenFeat.coords && greenFeat.coords.length >= 3) {
-        ctx.beginPath();
-        greenFeat.coords.forEach((c: number[], idx: number) => {
-          const pt = projectHole(c[0], c[1]);
-          if (idx === 0) ctx.moveTo(pt.x, pt.y);
-          else ctx.lineTo(pt.x, pt.y);
-        });
-        ctx.closePath();
+        const pts = greenFeat.coords.map((c: number[]) => projectHole(c[0], c[1]));
+        drawSmoothPolygon(ctx, pts);
         ctx.fillStyle = "rgba(187, 247, 208, 0.65)";
         ctx.fill();
         ctx.strokeStyle = "#ffffff";
@@ -3575,8 +3573,8 @@ let saveToNeonTimer: any = null;
     }
     // Global in-memory cache for Python FSG-Greens-Book Tour plots
     const greenImageCache = new Map<string, HTMLImageElement>();
+    const pendingGreenRenderTokens = new Set<string>();
     let forceRefreshGreen = false;
-    let pendingGreenRenderToken = "";
 
     function invalidateGreenCache(holeNumber?: number | string) {
       if (holeNumber) {
@@ -3592,11 +3590,108 @@ let saveToNeonTimer: any = null;
       forceRefreshGreen = true;
     }
 
+    async function triggerPythonGreenRender(model: any, force = false) {
+      const holeNum = parseInt((document.getElementById("meta-hole-num") as HTMLInputElement)?.value || "1", 10) || 1;
+      const holePar = parseInt((document.getElementById("meta-hole-par") as HTMLInputElement)?.value || "4", 10) || 4;
+      const courseName = (document.getElementById("meta-course-name") as HTMLInputElement)?.value || "Lakeview";
+      const holeYards = model.totalHoleYards || 350;
+      const greenFeat = holeData.features.find((f: any) => f.type === "green");
+      if (!greenFeat || !Array.isArray(greenFeat.coords) || greenFeat.coords.length < 3) return;
+
+      const cId = activeNeonCourseId || "default";
+      const token = `${cId}_h${holeNum}_len${greenFeat.coords.length}${force ? '_f' + Date.now() : ''}`;
+      if (pendingGreenRenderTokens.has(token)) return;
+      pendingGreenRenderTokens.add(token);
+
+      const bunkers = holeData.features
+        .filter((f: any) => f.type === "bunker" && Array.isArray(f.coords) && f.coords.length >= 3)
+        .map((f: any) => f.coords);
+      const water = holeData.features
+        .filter((f: any) => f.type === "water" && Array.isArray(f.coords) && f.coords.length >= 3)
+        .map((f: any) => f.coords);
+
+      try {
+        const res = await fetch("/api/render-green", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            course_id: cId,
+            course_name: courseName,
+            hole_number: holeNum,
+            par: holePar,
+            yardage: holeYards,
+            approach_bearing: model.approachBearingDeg,
+            green_coord: model.greenCentroidCoord || model.greenCoord,
+            pivot_coord: model.pivotCoord || model.approachOriginCoord,
+            tee_coord: model.teeCoord,
+            green_polygon: greenFeat.coords,
+            bunkers,
+            water,
+            force_refresh: force
+          })
+        });
+
+        if (!res.ok) throw new Error(`Python render HTTP ${res.status}`);
+        const payload = await res.json();
+        if (payload && payload.image_base64) {
+          holeData.lidarGrid = payload;
+          if (courseHolesStore[holeNum]) {
+            courseHolesStore[holeNum].lidarGrid = payload;
+          }
+          forceRefreshGreen = false;
+
+          // Cache directly into Neon Postgres course_holes table!
+          if (activeNeonCourseId) {
+            apiClient.saveHole({
+              course_id: activeNeonCourseId,
+              hole_number: holeNum,
+              lidar_grid: payload
+            }).catch(e => console.warn("Failed saving lidar_grid to Neon:", e));
+          }
+
+          // Preload and immediately paint onto canvas
+          const img = new Image();
+          img.src = payload.image_base64;
+          img.onload = () => {
+            greenImageCache.set(payload.image_base64, img);
+            renderGreenSpread(model);
+          };
+        }
+      } catch (err) {
+        console.warn("Python render-green unavailable, using canvas fallback:", err);
+      } finally {
+        pendingGreenRenderTokens.delete(token);
+      }
+    }
+
     function renderGreenSpread(model: any) {
       const canvas = document.getElementById("green-spread-canvas") as HTMLCanvasElement | null;
       if (!canvas) return;
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
+
+      // 0. Instant Render from Cached Python LiDAR if available in Neon lidar_grid
+      if (holeData.lidarGrid && holeData.lidarGrid.image_base64 && !forceRefreshGreen) {
+        let img = greenImageCache.get(holeData.lidarGrid.image_base64);
+        if (!img) {
+          img = new Image();
+          img.src = holeData.lidarGrid.image_base64;
+          img.onload = () => {
+            renderGreenSpread(model);
+          };
+          greenImageCache.set(holeData.lidarGrid.image_base64, img);
+        }
+        if (img.complete && img.naturalWidth > 0) {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0, 540, 1512);
+          return;
+        }
+      }
+
+      // If lidarGrid not cached or explicitly refreshing, trigger Python engine
+      if (!holeData.lidarGrid || !holeData.lidarGrid.image_base64 || forceRefreshGreen) {
+        triggerPythonGreenRender(model, forceRefreshGreen);
+      }
 
       const holeNum = parseInt((document.getElementById("meta-hole-num") as HTMLInputElement)?.value || "1", 10) || 1;
       const holePar = parseInt((document.getElementById("meta-hole-par") as HTMLInputElement)?.value || "4", 10) || 4;
@@ -3676,6 +3771,25 @@ let saveToNeonTimer: any = null;
           if (intersect) inside = !inside;
         }
         return inside;
+      }
+
+      function isPointInFringe(xYd: number, yYd: number, bufferYds = 3.5): boolean {
+        if (isPointInGreen(xYd, yYd)) return false;
+        let minDistSq = Infinity;
+        for (let i = 0, j = greenPolyYards.length - 1; i < greenPolyYards.length; j = i++) {
+          const p1 = greenPolyYards[j];
+          const p2 = greenPolyYards[i];
+          const dx = p2.x - p1.x;
+          const dy = p2.y - p1.y;
+          const l2 = dx * dx + dy * dy;
+          let t = l2 > 0 ? ((xYd - p1.x) * dx + (yYd - p1.y) * dy) / l2 : 0;
+          t = Math.max(0, Math.min(1, t));
+          const px = p1.x + t * dx;
+          const py = p1.y + t * dy;
+          const distSq = (xYd - px) ** 2 + (yYd - py) ** 2;
+          if (distSq < minDistSq) minDistSq = distSq;
+        }
+        return minDistSq <= bufferYds * bufferYds;
       }
 
       // Elevation field & gradients:
@@ -4123,21 +4237,26 @@ let saveToNeonTimer: any = null;
         });
       }
 
-      // Bold white downhill break arrows every 2.5 yards
+      ctx.restore(); // End green clip
+
+      // Bold white downhill break arrows every 2.5 yards extending 3.5y into fringe
       if (showSlopeArrows) {
-        for (let y = Math.floor(minGreenY); y <= Math.ceil(maxGreenY); y += 2.5) {
-          for (let x = Math.floor(minGreenX); x <= Math.ceil(maxGreenX); x += 2.5) {
-            if (isPointInGreen(x, y)) {
+        for (let y = Math.floor(minGreenY - 4); y <= Math.ceil(maxGreenY + 4); y += 2.5) {
+          for (let x = Math.floor(minGreenX - 4); x <= Math.ceil(maxGreenX + 4); x += 2.5) {
+            const inGreen = isPointInGreen(x, y);
+            const inFringe = !inGreen && isPointInFringe(x, y, 3.5);
+            if (inGreen || inFringe) {
               const { downAngle } = evalGradients(x, y);
               const sx = p2CX + x * SCALE_1480;
               const sy = p2CY - y * SCALE_1480;
+              ctx.save();
+              if (inFringe) ctx.globalAlpha = 0.5;
               drawDownhillArrow(sx, sy, downAngle, "#ffffff", 8.5, 1.8);
+              ctx.restore();
             }
           }
         }
       }
-
-      ctx.restore(); // End green clip
 
       // Green outline
       ctx.beginPath();
@@ -4177,7 +4296,7 @@ let saveToNeonTimer: any = null;
       ctx.fillStyle = "#ffffff";
       ctx.font = "bold 13px Inter, sans-serif";
       ctx.textAlign = "left";
-      ctx.fillText(`HOLE ${holeNum} — STRACKALINE SLOPE HEATMAP`, 20, 408);
+      ctx.fillText(`HOLE ${holeNum} - FSG SLOPE HEATMAP`, 20, 408);
 
       ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
       ctx.beginPath();
@@ -4315,19 +4434,27 @@ let saveToNeonTimer: any = null;
         });
       }
 
+      ctx.restore(); // End green clip for grid and contours
+
       // 3. Dense 2-yard stride downhill fall-line arrows + slope % labels every 8 yards
+      // Extends at least 3.5 yards into fringe area with opacity 0.5
       if (showSlopeArrows) {
-        for (let y = Math.floor(minGreenY); y <= Math.ceil(maxGreenY); y += 2) {
-          for (let x = Math.floor(minGreenX); x <= Math.ceil(maxGreenX); x += 2) {
-            if (isPointInGreen(x, y)) {
+        for (let y = Math.floor(minGreenY - 4); y <= Math.ceil(maxGreenY + 4); y += 2) {
+          for (let x = Math.floor(minGreenX - 4); x <= Math.ceil(maxGreenX + 4); x += 2) {
+            const inGreen = isPointInGreen(x, y);
+            const inFringe = !inGreen && isPointInFringe(x, y, 3.5);
+            if (inGreen || inFringe) {
               const { localSlopePct, downAngle, downScreenX, downScreenY } = evalGradients(x, y);
               const color = getOkabeItoSlopeColor(localSlopePct);
               const sx = p3CX + x * SCALE_1480;
               const sy = p3CY - y * SCALE_1480;
+              ctx.save();
+              if (inFringe) ctx.globalAlpha = 0.5;
               drawDownhillArrow(sx, sy, downAngle, color, 8, 1.4);
+              ctx.restore();
 
-              // Numeric slope % label every 8 yards
-              if (Math.abs(x) % 8 < 1.2 && Math.abs(y) % 8 < 1.2) {
+              // Numeric slope % label every 8 yards inside green
+              if (inGreen && Math.abs(x) % 8 < 1.2 && Math.abs(y) % 8 < 1.2) {
                 ctx.fillStyle = "#111111";
                 ctx.font = "bold 7px 'JetBrains Mono', monospace";
                 ctx.textAlign = "center";
@@ -4338,8 +4465,6 @@ let saveToNeonTimer: any = null;
           }
         }
       }
-
-      ctx.restore(); // End green clip
 
       // Perimeter Depth Labels along every 5-yard line from front edge
       ctx.fillStyle = "#333333";

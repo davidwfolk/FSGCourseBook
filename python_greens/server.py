@@ -36,6 +36,8 @@ class RenderGreenRequest(BaseModel):
     approach_bearing: float = 0.0
     green_coord: Optional[List[float]] = None
     green_polygon: List[List[float]] = Field(default_factory=list)
+    pivot_coord: Optional[List[float]] = None
+    tee_coord: Optional[List[float]] = None
     bunkers: List[List[List[float]]] = Field(default_factory=list)
     water: List[List[List[float]]] = Field(default_factory=list)
     force_refresh: bool = False
@@ -76,7 +78,9 @@ async def render_green(req: RenderGreenRequest):
                             "image_base64": f"data:image/png;base64,{b64_img}",
                             "svg": svg_str,
                             "cached": True,
-                            "hole_number": h_num
+                            "hole_number": h_num,
+                            "total_depth": meta.get("total_depth", 30),
+                            "avg_slope": meta.get("avg_slope", 2.8)
                         }
             except Exception as e:
                 print("Cache read error:", e)
@@ -120,16 +124,17 @@ async def render_green(req: RenderGreenRequest):
                 except:
                     pass
 
-        # Create virtual approach line (120 meters back along approach bearing)
+        # Create approach line (from actual pivot/tee or along approach bearing)
         g_center = green_poly.centroid
-        app_rad = math.radians(req.approach_bearing)
-        # Vector pointing away from approach (backwards toward fairway)
-        # approach_bearing is heading towards green. Backwards is (approach_bearing + 180)
-        back_rad = math.radians((req.approach_bearing + 180) % 360)
-        # Approximate 120m in degrees
-        d_lat = (120.0 / 111320.0) * math.cos(back_rad)
-        d_lon = (120.0 / (111320.0 * math.cos(math.radians(g_center.y)))) * math.sin(back_rad)
-        hole_line = LineString([Point(g_center.x + d_lon, g_center.y + d_lat), g_center])
+        if req.pivot_coord and len(req.pivot_coord) == 2:
+            hole_line = LineString([Point(req.pivot_coord[0], req.pivot_coord[1]), g_center])
+        elif req.tee_coord and len(req.tee_coord) == 2 and req.par == 3:
+            hole_line = LineString([Point(req.tee_coord[0], req.tee_coord[1]), g_center])
+        else:
+            back_rad = math.radians((req.approach_bearing + 180) % 360)
+            d_lat = (120.0 / 111320.0) * math.cos(back_rad)
+            d_lon = (120.0 / (111320.0 * math.cos(math.radians(g_center.y)))) * math.sin(back_rad)
+            hole_line = LineString([Point(g_center.x + d_lon, g_center.y + d_lat), g_center])
 
         geom_dict = {
             'green': green_poly,
@@ -171,8 +176,15 @@ async def render_green(req: RenderGreenRequest):
         try:
             with open(svg_cache_path, "w", encoding="utf-8") as sf:
                 sf.write(svg_str)
+            avg_slope = round(float(np.nanmean(slope_pct)), 1) if slope_pct is not None else 2.8
+            total_depth = plot_res.get('total_depth', 30)
             with open(meta_cache_path, "w", encoding="utf-8") as mf:
-                json.dump({"token": cache_token, "timestamp": os.path.getmtime(png_cache_path)}, mf)
+                json.dump({
+                    "token": cache_token,
+                    "timestamp": os.path.getmtime(png_cache_path),
+                    "total_depth": total_depth,
+                    "avg_slope": avg_slope
+                }, mf)
         except Exception as e:
             print("Failed to save cache metadata:", e)
 
@@ -181,7 +193,9 @@ async def render_green(req: RenderGreenRequest):
             "image_base64": f"data:image/png;base64,{b64_img}",
             "svg": svg_str,
             "cached": False,
-            "hole_number": h_num
+            "hole_number": h_num,
+            "total_depth": plot_res.get('total_depth', 30),
+            "avg_slope": round(float(np.nanmean(slope_pct)), 1) if slope_pct is not None else 2.8
         }
     except Exception as e:
         import traceback
