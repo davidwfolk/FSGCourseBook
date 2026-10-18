@@ -1,0 +1,9 @@
+requests
+numpy
+scipy
+matplotlib
+geopandas
+shapely
+rasterio
+overpy
+pyproj

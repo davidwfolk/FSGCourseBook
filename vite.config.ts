@@ -7,7 +7,13 @@ export default defineConfig(({ mode }) => {
 
   return {
     server: {
-      port: 5173
+      port: 5173,
+      proxy: {
+        '/api/render-green': {
+          target: 'http://127.0.0.1:8000',
+          changeOrigin: true
+        }
+      }
     },
     plugins: [
       {

@@ -161,6 +161,21 @@ export default async function handler(req: any, res: any) {
       }
     }
 
+    if (req.method === 'DELETE') {
+      const url = new URL(req.url, `http://${req.headers?.host || 'localhost'}`);
+      const courseId = url.searchParams.get('course_id') || req.query?.course_id;
+      const holeNumber = url.searchParams.get('hole_number') || req.query?.hole_number;
+      if (!courseId) {
+        return res.status(400).json({ error: 'course_id is required' });
+      }
+      if (holeNumber) {
+        await sql`DELETE FROM course_holes WHERE course_id = ${courseId} AND hole_number = ${parseInt(holeNumber, 10)};`;
+      } else {
+        await sql`DELETE FROM course_holes WHERE course_id = ${courseId};`;
+      }
+      return res.status(200).json({ success: true, message: 'Deleted course holes' });
+    }
+
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (error: any) {
     console.error('Error in /api/holes:', error);

@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:greens": "python_greens/.venv/Scripts/uvicorn python_greens.server:app --host 127.0.0.1 --port 8000",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "init-db": "node --env-file=.env scripts/init-db.mjs"

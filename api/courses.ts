@@ -17,6 +17,10 @@ export default async function handler(req: any, res: any) {
       const url = new URL(req.url, `http://${req.headers?.host || 'localhost'}`);
       const courseId = url.searchParams.get('id') || url.searchParams.get('course_id') || req.query?.id;
       const syncOsm = url.searchParams.get('sync_osm') === 'true' || req.query?.sync_osm === 'true';
+      const hardReset = url.searchParams.get('hard_reset') === 'true' || 
+                        url.searchParams.get('hardReset') === 'true' || 
+                        req.query?.hard_reset === 'true' || 
+                        req.query?.hardReset === 'true';
 
       if (courseId) {
         // Fetch single course
@@ -75,44 +79,65 @@ export default async function handler(req: any, res: any) {
             if (osmData) {
               const matched = matchOsmHoles(osmData, course.name);
               const savedHoles = [];
-              for (const h of matched.holes) {
-                const hNum = h.hole_number;
-                const holeRow = await sql`
-                  INSERT INTO course_holes (
-                    course_id, hole_number, par, handicap, yardage,
-                    tee_lat, tee_lon, pivot_lat, pivot_lon,
-                    green_lat, green_lon, hole_bearing, approach_bearing,
-                    green_polygon, bunkers_geojson, fairways_geojson,
-                    features, lidar_grid
-                  ) VALUES (
-                    ${course.id}, ${hNum}, ${h.par || 4}, ${null}, ${h.yardage || 350},
-                    ${h.tee_lat}, ${h.tee_lon}, ${h.pivot_lat || null}, ${h.pivot_lon || null},
-                    ${h.green_lat}, ${h.green_lon}, ${h.hole_bearing || 0}, ${h.approach_bearing || 0},
-                    ${JSON.stringify(h.green_polygon || null)}::jsonb,
-                    ${JSON.stringify(h.bunkers_geojson || [])}::jsonb,
-                    ${JSON.stringify(h.fairways_geojson || [])}::jsonb,
-                    ${JSON.stringify(h.features || [])}::jsonb,
-                    ${null}
-                  )
-                  ON CONFLICT (course_id, hole_number) DO UPDATE
-                  SET par = EXCLUDED.par,
-                      yardage = EXCLUDED.yardage,
-                      tee_lat = EXCLUDED.tee_lat,
-                      tee_lon = EXCLUDED.tee_lon,
-                      pivot_lat = EXCLUDED.pivot_lat,
-                      pivot_lon = EXCLUDED.pivot_lon,
-                      green_lat = EXCLUDED.green_lat,
-                      green_lon = EXCLUDED.green_lon,
-                      hole_bearing = EXCLUDED.hole_bearing,
-                      approach_bearing = EXCLUDED.approach_bearing,
-                      green_polygon = EXCLUDED.green_polygon,
-                      bunkers_geojson = EXCLUDED.bunkers_geojson,
-                      fairways_geojson = EXCLUDED.fairways_geojson,
-                      features = EXCLUDED.features
-                  RETURNING *;
-                `;
-                savedHoles.push(holeRow[0]);
+
+              if (hardReset || holes.length === 0) {
+                // Hard Reset: Explicitly wipe old holes before saving fresh Overpass data
+                await sql`DELETE FROM course_holes WHERE course_id = ${course.id};`;
+                for (const h of matched.holes) {
+                  const hNum = h.hole_number;
+                  const holeRow = await sql`
+                    INSERT INTO course_holes (
+                      course_id, hole_number, par, handicap, yardage,
+                      tee_lat, tee_lon, pivot_lat, pivot_lon,
+                      green_lat, green_lon, hole_bearing, approach_bearing,
+                      green_polygon, bunkers_geojson, fairways_geojson,
+                      features, lidar_grid
+                    ) VALUES (
+                      ${course.id}, ${hNum}, ${h.par || 4}, ${null}, ${h.yardage || 350},
+                      ${h.tee_lat}, ${h.tee_lon}, ${h.pivot_lat || null}, ${h.pivot_lon || null},
+                      ${h.green_lat}, ${h.green_lon}, ${h.hole_bearing || 0}, ${h.approach_bearing || 0},
+                      ${JSON.stringify(h.green_polygon || null)}::jsonb,
+                      ${JSON.stringify(h.bunkers_geojson || [])}::jsonb,
+                      ${JSON.stringify(h.fairways_geojson || [])}::jsonb,
+                      ${JSON.stringify(h.features || [])}::jsonb,
+                      ${null}
+                    )
+                    RETURNING *;
+                  `;
+                  savedHoles.push(holeRow[0]);
+                }
+              } else {
+                // Soft Merge: Update fairways, bunkers, green_polygon and features; INTENTIONALLY OMIT tee_lat, tee_lon, green_lat, green_lon so manual adjustments survive!
+                for (const h of matched.holes) {
+                  const hNum = h.hole_number;
+                  const holeRow = await sql`
+                    INSERT INTO course_holes (
+                      course_id, hole_number, par, handicap, yardage,
+                      tee_lat, tee_lon, pivot_lat, pivot_lon,
+                      green_lat, green_lon, hole_bearing, approach_bearing,
+                      green_polygon, bunkers_geojson, fairways_geojson,
+                      features, lidar_grid
+                    ) VALUES (
+                      ${course.id}, ${hNum}, ${h.par || 4}, ${null}, ${h.yardage || 350},
+                      ${h.tee_lat}, ${h.tee_lon}, ${h.pivot_lat || null}, ${h.pivot_lon || null},
+                      ${h.green_lat}, ${h.green_lon}, ${h.hole_bearing || 0}, ${h.approach_bearing || 0},
+                      ${JSON.stringify(h.green_polygon || null)}::jsonb,
+                      ${JSON.stringify(h.bunkers_geojson || [])}::jsonb,
+                      ${JSON.stringify(h.fairways_geojson || [])}::jsonb,
+                      ${JSON.stringify(h.features || [])}::jsonb,
+                      ${null}
+                    )
+                    ON CONFLICT (course_id, hole_number) DO UPDATE
+                    SET fairways_geojson = EXCLUDED.fairways_geojson,
+                        bunkers_geojson = EXCLUDED.bunkers_geojson,
+                        green_polygon = COALESCE(course_holes.green_polygon, EXCLUDED.green_polygon),
+                        features = EXCLUDED.features
+                    RETURNING *;
+                  `;
+                  savedHoles.push(holeRow[0]);
+                }
               }
+
               if (savedHoles.length > 0) {
                 holes = savedHoles;
               }
@@ -148,7 +173,7 @@ export default async function handler(req: any, res: any) {
 
     if (req.method === 'POST') {
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-      const { name, city, state, center_lat: inputLat, center_lon: inputLon, osmData, holes: manualHoles, osm_raw_r2_key } = body;
+      const { name, city, state, center_lat: inputLat, center_lon: inputLon, osmData, holes: manualHoles, osm_raw_r2_key, hardReset } = body;
 
       if (!name) {
         return res.status(400).json({ error: 'Course name is required' });
@@ -188,7 +213,12 @@ export default async function handler(req: any, res: any) {
       const course = courseRows[0];
       const savedHoles: any[] = [];
 
-      // 2. Bulk upsert holes 1-18 into course_holes
+      // Explicitly execute DELETE FROM course_holes WHERE course_id = $1 if hardReset is true
+      if (holesToSave.length > 0 && hardReset) {
+        await sql`DELETE FROM course_holes WHERE course_id = ${course.id};`;
+      }
+
+      // 2. Bulk insert holes 1-18 into course_holes
       for (const h of holesToSave) {
         const hNum = parseInt(h.hole_number, 10);
         if (isNaN(hNum) || hNum < 1 || hNum > 18) continue;
@@ -198,45 +228,75 @@ export default async function handler(req: any, res: any) {
         const greenLat = h.green_lat ?? (h.centerline ? h.centerline[h.centerline.length - 1][1] : finalLat);
         const greenLon = h.green_lon ?? (h.centerline ? h.centerline[h.centerline.length - 1][0] : finalLon);
 
-        const holeRow = await sql`
-          INSERT INTO course_holes (
-            course_id, hole_number, par, handicap, yardage,
-            tee_lat, tee_lon, pivot_lat, pivot_lon,
-            green_lat, green_lon, hole_bearing, approach_bearing,
-            green_polygon, bunkers_geojson, fairways_geojson, lidar_r2_key,
-            features, lidar_grid
-          ) VALUES (
-            ${course.id}, ${hNum}, ${h.par || 4}, ${h.handicap || null}, ${h.yardage || 400},
-            ${teeLat}, ${teeLon}, ${h.pivot_lat || null}, ${h.pivot_lon || null},
-            ${greenLat}, ${greenLon}, ${h.hole_bearing || 0}, ${h.approach_bearing || 0},
-            ${JSON.stringify(h.green_polygon || null)}::jsonb,
-            ${JSON.stringify(h.bunkers_geojson || [])}::jsonb,
-            ${JSON.stringify(h.fairways_geojson || [])}::jsonb,
-            ${h.lidar_r2_key || null},
-            ${JSON.stringify(h.features || [])}::jsonb,
-            ${JSON.stringify(h.lidar_grid || h.lidarGrid || null)}::jsonb
-          )
-          ON CONFLICT (course_id, hole_number) DO UPDATE
-          SET par = EXCLUDED.par,
-              handicap = COALESCE(EXCLUDED.handicap, course_holes.handicap),
-              yardage = EXCLUDED.yardage,
-              tee_lat = EXCLUDED.tee_lat,
-              tee_lon = EXCLUDED.tee_lon,
-              pivot_lat = EXCLUDED.pivot_lat,
-              pivot_lon = EXCLUDED.pivot_lon,
-              green_lat = EXCLUDED.green_lat,
-              green_lon = EXCLUDED.green_lon,
-              hole_bearing = EXCLUDED.hole_bearing,
-              approach_bearing = EXCLUDED.approach_bearing,
-              green_polygon = COALESCE(EXCLUDED.green_polygon, course_holes.green_polygon),
-              bunkers_geojson = COALESCE(EXCLUDED.bunkers_geojson, course_holes.bunkers_geojson),
-              fairways_geojson = COALESCE(EXCLUDED.fairways_geojson, course_holes.fairways_geojson),
-              lidar_r2_key = COALESCE(EXCLUDED.lidar_r2_key, course_holes.lidar_r2_key),
-              features = COALESCE(EXCLUDED.features, course_holes.features),
-              lidar_grid = COALESCE(EXCLUDED.lidar_grid, course_holes.lidar_grid)
-          RETURNING *;
-        `;
-        savedHoles.push(holeRow[0]);
+        if (hardReset) {
+          const holeRow = await sql`
+            INSERT INTO course_holes (
+              course_id, hole_number, par, handicap, yardage,
+              tee_lat, tee_lon, pivot_lat, pivot_lon,
+              green_lat, green_lon, hole_bearing, approach_bearing,
+              green_polygon, bunkers_geojson, fairways_geojson, lidar_r2_key,
+              features, lidar_grid
+            ) VALUES (
+              ${course.id}, ${hNum}, ${h.par || 4}, ${h.handicap || null}, ${h.yardage || 400},
+              ${teeLat}, ${teeLon}, ${h.pivot_lat || null}, ${h.pivot_lon || null},
+              ${greenLat}, ${greenLon}, ${h.hole_bearing || 0}, ${h.approach_bearing || 0},
+              ${JSON.stringify(h.green_polygon || null)}::jsonb,
+              ${JSON.stringify(h.bunkers_geojson || [])}::jsonb,
+              ${JSON.stringify(h.fairways_geojson || [])}::jsonb,
+              ${h.lidar_r2_key || null},
+              ${JSON.stringify(h.features || [])}::jsonb,
+              ${JSON.stringify(h.lidar_grid || h.lidarGrid || null)}::jsonb
+            )
+            ON CONFLICT (course_id, hole_number) DO UPDATE
+            SET par = EXCLUDED.par,
+                handicap = COALESCE(EXCLUDED.handicap, course_holes.handicap),
+                yardage = EXCLUDED.yardage,
+                tee_lat = EXCLUDED.tee_lat,
+                tee_lon = EXCLUDED.tee_lon,
+                pivot_lat = EXCLUDED.pivot_lat,
+                pivot_lon = EXCLUDED.pivot_lon,
+                green_lat = EXCLUDED.green_lat,
+                green_lon = EXCLUDED.green_lon,
+                hole_bearing = EXCLUDED.hole_bearing,
+                approach_bearing = EXCLUDED.approach_bearing,
+                green_polygon = EXCLUDED.green_polygon,
+                bunkers_geojson = EXCLUDED.bunkers_geojson,
+                fairways_geojson = EXCLUDED.fairways_geojson,
+                lidar_r2_key = COALESCE(EXCLUDED.lidar_r2_key, course_holes.lidar_r2_key),
+                features = EXCLUDED.features,
+                lidar_grid = EXCLUDED.lidar_grid
+            RETURNING *;
+          `;
+          savedHoles.push(holeRow[0]);
+        } else {
+          // Soft Merge: Intentionally omit tee_lat, tee_lon, green_lat, green_lon so manual adjustments survive
+          const holeRow = await sql`
+            INSERT INTO course_holes (
+              course_id, hole_number, par, handicap, yardage,
+              tee_lat, tee_lon, pivot_lat, pivot_lon,
+              green_lat, green_lon, hole_bearing, approach_bearing,
+              green_polygon, bunkers_geojson, fairways_geojson, lidar_r2_key,
+              features, lidar_grid
+            ) VALUES (
+              ${course.id}, ${hNum}, ${h.par || 4}, ${h.handicap || null}, ${h.yardage || 400},
+              ${teeLat}, ${teeLon}, ${h.pivot_lat || null}, ${h.pivot_lon || null},
+              ${greenLat}, ${greenLon}, ${h.hole_bearing || 0}, ${h.approach_bearing || 0},
+              ${JSON.stringify(h.green_polygon || null)}::jsonb,
+              ${JSON.stringify(h.bunkers_geojson || [])}::jsonb,
+              ${JSON.stringify(h.fairways_geojson || [])}::jsonb,
+              ${h.lidar_r2_key || null},
+              ${JSON.stringify(h.features || [])}::jsonb,
+              ${JSON.stringify(h.lidar_grid || h.lidarGrid || null)}::jsonb
+            )
+            ON CONFLICT (course_id, hole_number) DO UPDATE
+            SET fairways_geojson = EXCLUDED.fairways_geojson,
+                bunkers_geojson = EXCLUDED.bunkers_geojson,
+                green_polygon = COALESCE(course_holes.green_polygon, EXCLUDED.green_polygon),
+                features = EXCLUDED.features
+            RETURNING *;
+          `;
+          savedHoles.push(holeRow[0]);
+        }
       }
 
       return res.status(200).json({

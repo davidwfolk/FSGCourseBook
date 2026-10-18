@@ -187,19 +187,18 @@
         <option value="18">Hole 18</option>
       </select>
 
-      <!-- Preset Selector -->
-      <select id="preset-select"
-        class="bg-slate-800 border border-slate-700 text-xs text-slate-200 rounded-lg px-2 py-2 focus:outline-none focus:border-emerald-500 cursor-pointer shrink-0">
-        <option value="preset1">Preset 1 (448y Par 4)</option>
-        <option value="preset2">Preset 2 (399y Big Oak)</option>
-        <option value="empty">Blank / Custom</option>
-      </select>
-
-      <!-- Re-Sync OSM Button -->
-      <button id="resync-osm-btn" title="Re-Sync course vectors & all 18 holes from OpenStreetMap"
+      <!-- Re-Sync OSM Button (Soft Merge) -->
+      <button id="resync-osm-btn" title="Re-Sync course vectors & fairways/bunkers from OpenStreetMap (preserves manual Tee & Green adjustments)"
         class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium px-2.5 py-2 rounded-lg flex items-center gap-1 shadow-sm transition shrink-0">
         <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
         <span class="hidden md:inline">Re-Sync OSM</span>
+      </button>
+
+      <!-- Hard Reset OSM Button (Full Wipe & Fresh Match) -->
+      <button id="hard-reset-osm-btn" title="Hard reset course vectors & all 18 holes from OpenStreetMap (wipes all manual adjustments)"
+        class="bg-rose-700 hover:bg-rose-600 text-white text-xs font-medium px-2.5 py-2 rounded-lg flex items-center gap-1 shadow-sm transition shrink-0">
+        <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+        <span class="hidden md:inline">Hard Reset OSM</span>
       </button>
 
       <!-- Auto-Populate Fairway Yardage Dots -->
@@ -456,6 +455,11 @@
             <input id="meta-hole-par" type="number" min="3" max="6" value="4"
               class="w-5 bg-transparent text-xs font-bold text-white focus:outline-none text-center" />
           </div>
+          <!-- Hidden inputs for state persistence & math formulas -->
+          <input id="meta-green-slope-dir" type="hidden" value="215" />
+          <input id="meta-green-slope-pct" type="hidden" value="2.8" />
+          <input id="meta-green-zoom" type="hidden" value="2.3" />
+          <input id="meta-corridor-yds" type="hidden" value="20" />
           <div class="hidden sm:flex items-center bg-slate-800/80 rounded-lg border border-slate-700/80 px-2 py-1 text-[11px] text-slate-300 gap-1.5 font-mono-code">
             <span class="text-emerald-400 font-bold" id="spread-yardage-pill">364y</span>
             <span class="text-slate-500">|</span>
@@ -512,7 +516,7 @@
         <div class="flex flex-col items-center shrink-0">
           <div class="text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-2 flex items-center gap-1.5">
             <span class="w-2 h-2 rounded-full bg-sky-400 animate-pulse"></span>
-            Spread 2: 3-Panel 1:480 Green Book
+            Spread 2: Tour USGA 1:480 Green Book
           </div>
           <div id="spread2-wrapper" class="rounded-sm shadow-[0_20px_60px_rgba(0,0,0,0.85)] border border-slate-700 overflow-hidden bg-white">
             <canvas id="green-spread-canvas" width="540" height="1512"

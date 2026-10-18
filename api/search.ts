@@ -1,23 +1,5 @@
 import { sql } from './db';
 
-async function upsertCourseToNeon(name: string, city: string, state: string, lat: number, lon: number) {
-  try {
-    const rows = await sql`
-      INSERT INTO courses (name, city, state, center_lat, center_lon)
-      VALUES (${name}, ${city || null}, ${state || 'ID'}, ${lat}, ${lon})
-      ON CONFLICT (name) DO UPDATE SET
-        center_lat = EXCLUDED.center_lat,
-        center_lon = EXCLUDED.center_lon,
-        city = COALESCE(EXCLUDED.city, courses.city),
-        state = COALESCE(EXCLUDED.state, courses.state)
-      RETURNING *;
-    `;
-    return rows[0];
-  } catch (err) {
-    console.warn('Upsert course error for', name, err);
-    return null;
-  }
-}
 
 export default async function handler(req: any, res: any) {
   // CORS
@@ -153,16 +135,13 @@ export default async function handler(req: any, res: any) {
                 const city = el.tags?.['addr:city'] || zipCity;
                 const state = el.tags?.['addr:state'] || zipState || 'ID';
 
-                // Automatically UPSERT discovered course into Neon Postgres!
-                const savedCourse = await upsertCourseToNeon(name, city, state, parseFloat(lat), parseFloat(lon));
-
                 const dLat = (lat - centerLat!) * 69;
                 const dLon = (lon - centerLon!) * 53;
                 const distMiles = Math.hypot(dLat, dLon).toFixed(1);
 
                 results.push({
-                  id: savedCourse ? savedCourse.id : key,
-                  neonId: savedCourse ? savedCourse.id : null,
+                  id: `osm-${parseFloat(lat).toFixed(4)}-${parseFloat(lon).toFixed(4)}`,
+                  neonId: null,
                   name,
                   city,
                   state,
@@ -170,7 +149,7 @@ export default async function handler(req: any, res: any) {
                   lat: parseFloat(lat),
                   lon: parseFloat(lon),
                   badge: `${distMiles} mi from ${zip}`,
-                  isNeon: Boolean(savedCourse),
+                  isNeon: false,
                   holesCount: 0
                 });
               }
@@ -213,12 +192,9 @@ export default async function handler(req: any, res: any) {
           if (seenKeys.has(key)) continue;
           seenKeys.add(key);
 
-          // UPSERT into Neon Postgres immediately!
-          const savedCourse = await upsertCourseToNeon(name, city, state, lat, lon);
-
           results.push({
-            id: savedCourse ? savedCourse.id : key,
-            neonId: savedCourse ? savedCourse.id : null,
+            id: `nom-${lat.toFixed(4)}-${lon.toFixed(4)}`,
+            neonId: null,
             name,
             city,
             state,
@@ -226,7 +202,7 @@ export default async function handler(req: any, res: any) {
             lat,
             lon,
             badge: isGolf ? 'Golf Course' : item.type || 'Location',
-            isNeon: Boolean(savedCourse),
+            isNeon: false,
             holesCount: 0
           });
         }

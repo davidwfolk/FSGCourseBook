@@ -61,16 +61,26 @@ export const apiClient = {
 
   /**
    * Fetch a single course and its 18 holes from Neon Postgres
+   * @param courseId UUID or course name
+   * @param syncOsm boolean trigger to re-sync with Overpass OSM data
+   * @param hardReset boolean flag to hard reset (wipe course_holes before re-sync)
    */
-  async getCourse(courseId: string, syncOsm: boolean = false): Promise<{ course: CourseRecord; holes: HoleRecord[]; yardage_book?: YardageBookRecord } | null> {
+  async getCourse(
+    courseId: string,
+    syncOsm: boolean = false,
+    hardReset: boolean = false
+  ): Promise<{ course: CourseRecord; holes: HoleRecord[]; yardage_book?: YardageBookRecord } | null> {
     try {
-      const url = `/api/courses?id=${encodeURIComponent(courseId)}${syncOsm ? '&sync_osm=true' : ''}`;
+      const url = `/api/courses?id=${encodeURIComponent(courseId)}${syncOsm ? '&sync_osm=true' : ''}${hardReset ? '&hard_reset=true' : ''}`;
       const res = await fetch(url);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => '');
+        throw new Error(`HTTP ${res.status}: ${errorText}`);
+      }
       return await res.json();
     } catch (err) {
-      console.warn('apiClient.getCourse failed:', err);
-      return null;
+      console.error('apiClient.getCourse failed:', err);
+      throw err;
     }
   },
 
@@ -104,6 +114,7 @@ export const apiClient = {
     osmData?: any;
     holes?: any[];
     osm_raw_r2_key?: string;
+    hardReset?: boolean;
   }): Promise<{ success: boolean; course: CourseRecord; holes: HoleRecord[] }> {
     const res = await fetch('/api/courses', {
       method: 'POST',
