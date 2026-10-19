@@ -538,6 +538,8 @@ let saveToNeonTimer: any = null;
       }, 700);
     }
 
+    const saveHoleToNeon = syncHoleToNeon;
+
     function saveStateToLocalStorage(syncNeon = false) {
       if (syncNeon) {
         syncHoleToNeon();
@@ -553,6 +555,21 @@ let saveToNeonTimer: any = null;
         };
         courseHolesStore[curHoleNum] = JSON.parse(JSON.stringify(holeData));
 
+        // FIX 1: Stop the LocalStorage Memory Leak
+        // Strip heavy image_base64 from all holes so localStorage stays lightweight (<50 KB)
+        const sanitizedStore: Record<string, any> = {};
+        for (const [key, hole] of Object.entries(courseHolesStore)) {
+          if (!hole) continue;
+          const clonedHole = JSON.parse(JSON.stringify(hole));
+          if (clonedHole.lidarGrid?.image_base64) {
+            delete clonedHole.lidarGrid.image_base64;
+          }
+          if (clonedHole.lidar_grid?.image_base64) {
+            delete clonedHole.lidar_grid.image_base64;
+          }
+          sanitizedStore[key] = clonedHole;
+        }
+
         const payload = {
           version: 3,
           activeHoleNum: curHoleNum,
@@ -561,7 +578,7 @@ let saveToNeonTimer: any = null;
           mapZoom: map.getZoom(),
           greenZoom: parseFloat((document.getElementById("meta-green-zoom") as HTMLInputElement)?.value) || 2.3,
           corridorYds: parseFloat((document.getElementById("meta-corridor-yds") as HTMLInputElement)?.value) || 20,
-          courseHolesStore,
+          courseHolesStore: sanitizedStore,
           cachedCourseOSM
         };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
@@ -3832,9 +3849,11 @@ let saveToNeonTimer: any = null;
 
     function invalidateGreenCache(holeNumber?: number | string) {
       if (holeNumber) {
-        const hStr = `_h${holeNumber}_`;
+        const hStr1 = `_h${holeNumber}_`;
+        const hStr2 = `hole_${holeNumber}_`;
+        const hStr3 = `_${holeNumber}_`;
         for (const k of greenImageCache.keys()) {
-          if (k.includes(hStr)) {
+          if (k.includes(hStr1) || k.includes(hStr2) || k.includes(hStr3)) {
             greenImageCache.delete(k);
           }
         }
@@ -3900,31 +3919,67 @@ let saveToNeonTimer: any = null;
 
         if (!res.ok) throw new Error(`Python render HTTP ${res.status}`);
         const payload = await res.json();
-        if (payload && payload.image_base64) {
+        if (payload && (payload.image_base64 || payload.image_url)) {
           payload.layout_version = GREEN_LAYOUT_VERSION;
           payload.cache_key = cacheKey;
+
+          const rawB64 = payload.image_base64;
+          const dataUri = rawB64
+            ? (rawB64.startsWith("data:") ? rawB64 : `data:image/png;base64,${rawB64}`)
+            : null;
+
+          // FIX 2: Cloudflare R2 Upload Pipeline
+          // Heavy base64 is offloaded to Cloudflare R2 so Postgres and localStorage stay lightweight
+          if (dataUri) {
+            try {
+              const blob = await fetch(dataUri).then(r => r.blob());
+              const courseId = activeNeonCourseId || cId || "course";
+              const fileName = `${courseId}_hole_${holeNum}_${Date.now()}.png`;
+              const presignRes = await fetch('/api/r2-presign?filename=' + encodeURIComponent(fileName));
+              if (presignRes.ok) {
+                const { uploadUrl, publicUrl } = await presignRes.json();
+                if (uploadUrl) {
+                  const r2UploadRes = await fetch(uploadUrl, {
+                    method: 'PUT',
+                    body: blob,
+                    headers: { 'Content-Type': 'image/png' }
+                  });
+                  if (r2UploadRes.ok && publicUrl) {
+                    payload.image_url = publicUrl;
+                    // Explicitly delete base64 so neither Neon nor LocalStorage bloat
+                    delete payload.image_base64;
+                  }
+                }
+              }
+            } catch (r2Err) {
+              console.warn("R2 upload error (falling back to direct display):", r2Err);
+            }
+          }
+
           holeData.lidarGrid = payload;
           if (courseHolesStore[holeNum]) {
             courseHolesStore[holeNum].lidarGrid = payload;
           }
           forceRefreshGreen = false;
 
-          // Cache directly into Neon Postgres course_holes table!
+          // Save this updated, lightweight hole payload to Neon via saveHoleToNeon()
           if (activeNeonCourseId) {
-            apiClient.saveHole({
-              course_id: activeNeonCourseId,
-              hole_number: holeNum,
-              lidar_grid: payload
-            }).catch(e => console.warn("Failed saving lidar_grid to Neon:", e));
+            saveHoleToNeon(holeNum);
           }
 
           // Preload and immediately paint onto canvas
-          const img = new Image();
-          img.src = payload.image_base64;
-          img.onload = () => {
-            greenImageCache.set(payload.image_base64, img);
-            renderGreenSpread(model);
-          };
+          const displaySrc = payload.image_url || dataUri;
+          if (displaySrc) {
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            img.src = displaySrc;
+            img.onload = () => {
+              greenImageCache.set(displaySrc, img);
+              if (payload.image_url) greenImageCache.set(payload.image_url, img);
+              if (dataUri) greenImageCache.set(dataUri, img);
+              renderGreenSpread(model);
+            };
+          }
         }
       } catch (err) {
         console.warn("Python render-green unavailable, using canvas fallback:", err);
@@ -3946,21 +4001,30 @@ let saveToNeonTimer: any = null;
       const coordHash = greenFeat && Array.isArray(greenFeat.coords) ? computeCoordHash(greenFeat.coords) : "none";
       const cacheKey = `${cId}_${holeNum}_${GREEN_LAYOUT_VERSION}_${appDeg}_${coordHash}`;
 
-      const isCacheValid = holeData.lidarGrid &&
-        holeData.lidarGrid.image_base64 &&
-        holeData.lidarGrid.layout_version === GREEN_LAYOUT_VERSION &&
-        holeData.lidarGrid.cache_key === cacheKey;
+      // FIX 3: Load Greens from R2 (check image_url first, fallback to base64)
+      const holeObj = holeData;
+      const grid = holeObj?.lidarGrid || holeObj?.lidar_grid;
+      const imageUrl = grid?.image_url;
+      const imageBase64 = grid?.image_base64;
+      const imageSrc = imageUrl || imageBase64;
 
-      // 0. Instant Render from Cached Python LiDAR if valid and layout version matches
+      const isCacheValid = grid &&
+        imageSrc &&
+        grid.layout_version === GREEN_LAYOUT_VERSION &&
+        grid.cache_key === cacheKey;
+
+      // 0. Instant Render from Cached Python LiDAR (R2 URL or base64) if valid and layout version matches
       if (isCacheValid && !forceRefreshGreen) {
-        let img = greenImageCache.get(holeData.lidarGrid.image_base64);
+        let img = greenImageCache.get(imageSrc);
         if (!img) {
           img = new Image();
-          img.src = holeData.lidarGrid.image_base64;
+          img.crossOrigin = "anonymous";
+          img.src = imageSrc;
           img.onload = () => {
             renderGreenSpread(model);
           };
-          greenImageCache.set(holeData.lidarGrid.image_base64, img);
+          greenImageCache.set(imageSrc, img);
+          if (imageUrl) greenImageCache.set(imageUrl, img);
         }
         if (img.complete && img.naturalWidth > 0) {
           ctx.clearRect(0, 0, canvas.width, canvas.height);

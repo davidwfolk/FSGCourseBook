@@ -56,13 +56,13 @@ export default async function handler(req: any, res: any) {
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
     const urlParams = new URL(req.url, `http://${req.headers?.host || 'localhost'}`).searchParams;
 
-    const key = body.key || urlParams.get('key');
-    const contentType = body.contentType || urlParams.get('contentType') || 'application/octet-stream';
-    const operation = (body.operation || urlParams.get('operation') || (req.method === 'GET' ? 'get' : 'put')).toLowerCase();
+    const key = body.key || body.filename || urlParams.get('key') || urlParams.get('filename');
+    const contentType = body.contentType || urlParams.get('contentType') || 'image/png';
+    const operation = (body.operation || urlParams.get('operation') || 'put').toLowerCase();
     const expiresIn = parseInt(body.expiresIn || urlParams.get('expiresIn') || '3600', 10);
 
     if (!key) {
-      return res.status(400).json({ error: 'Storage "key" is required' });
+      return res.status(400).json({ error: 'Storage "key" or "filename" is required' });
     }
 
     const s3 = new S3Client({
@@ -74,13 +74,16 @@ export default async function handler(req: any, res: any) {
       }
     });
 
+    const publicBase = getEnv('R2_PUBLIC_URL').trim();
+
     if (operation === 'get') {
       const command = new GetObjectCommand({
         Bucket: bucketName,
         Key: key
       });
       const signedUrl = await getSignedUrl(s3, command, { expiresIn });
-      return res.status(200).json({ url: signedUrl, key, bucket: bucketName, operation: 'get' });
+      const publicUrl = publicBase ? `${publicBase.replace(/\/+$/, '')}/${key}` : signedUrl;
+      return res.status(200).json({ url: signedUrl, publicUrl, uploadUrl: null, key, bucket: bucketName, operation: 'get' });
     } else {
       const command = new PutObjectCommand({
         Bucket: bucketName,
@@ -88,7 +91,25 @@ export default async function handler(req: any, res: any) {
         ContentType: contentType
       });
       const signedUrl = await getSignedUrl(s3, command, { expiresIn });
-      return res.status(200).json({ url: signedUrl, key, bucket: bucketName, operation: 'put' });
+
+      let publicUrl = publicBase ? `${publicBase.replace(/\/+$/, '')}/${key}` : '';
+      if (!publicUrl) {
+        try {
+          const getCmd = new GetObjectCommand({ Bucket: bucketName, Key: key });
+          publicUrl = await getSignedUrl(s3, getCmd, { expiresIn: 604800 });
+        } catch {
+          publicUrl = signedUrl.split('?')[0];
+        }
+      }
+
+      return res.status(200).json({
+        uploadUrl: signedUrl,
+        publicUrl,
+        url: signedUrl,
+        key,
+        bucket: bucketName,
+        operation: 'put'
+      });
     }
   } catch (error: any) {
     console.error('Error generating R2 presigned URL:', error);
