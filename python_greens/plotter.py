@@ -5,12 +5,24 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+import matplotlib.patheffects as patheffects
 from matplotlib.path import Path
 from matplotlib.patches import PathPatch
 from matplotlib.colors import LinearSegmentedColormap, ListedColormap, BoundaryNorm
 from shapely.geometry import Point as ShPoint, Polygon, LineString
 from shapely.affinity import rotate
 import shapely
+from scipy.ndimage import zoom
+
+def set_clip(artist, patch):
+    if hasattr(artist, 'set_clip_path'):
+        artist.set_clip_path(patch)
+    if hasattr(artist, 'collections'):
+        try:
+            for c in artist.collections:
+                c.set_clip_path(patch)
+        except Exception:
+            pass
 
 def smooth_polygon(poly, refinements=3):
     if poly is None or poly.is_empty:
@@ -66,7 +78,80 @@ class GreenPlotter:
         elif s < 9: return '#990000'
         else: return '#882255'
         
-    def generate_plot(self, dem_data, slope_pct, down_gx, down_gy, approach_angle_deg=0, course_name="Golf Course", hole_num=1, par=4, yardage=350, as_format="both"):
+    def _get_rotated_satellite_image(self, lat, lon, rot_deg, width_m=45.72, height_m=32.176):
+        import os, math, io, requests
+        from PIL import Image
+
+        cache_tile_dir = os.path.join(os.path.dirname(__file__), "cache", "esri_tiles")
+        os.makedirs(cache_tile_dir, exist_ok=True)
+
+        z = 19
+        def deg2num(lat_deg, lon_deg, zoom):
+            lat_r = math.radians(lat_deg)
+            n = 2.0 ** zoom
+            xtile = int((lon_deg + 180.0) / 360.0 * n)
+            ytile = int((1.0 - math.asinh(math.tan(lat_r)) / math.pi) / 2.0 * n)
+            return xtile, ytile
+
+        cx_tile, cy_tile = deg2num(lat, lon, z)
+
+        stitched = Image.new('RGB', (768, 768), (10, 17, 32))
+        has_any_tile = False
+        for dx in [-1, 0, 1]:
+            for dy in [-1, 0, 1]:
+                tx, ty = cx_tile + dx, cy_tile + dy
+                tile_path = os.path.join(cache_tile_dir, f"{z}_{tx}_{ty}.jpg")
+                tile_img = None
+                if os.path.exists(tile_path):
+                    try:
+                        tile_img = Image.open(tile_path)
+                    except:
+                        pass
+                if tile_img is None:
+                    try:
+                        url = f"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{ty}/{tx}"
+                        r = requests.get(url, headers={'User-Agent': 'FSG/1.0'}, timeout=3.5)
+                        if r.status_code == 200:
+                            with open(tile_path, "wb") as f:
+                                f.write(r.content)
+                            tile_img = Image.open(io.BytesIO(r.content))
+                    except:
+                        pass
+                if tile_img:
+                    has_any_tile = True
+                    stitched.paste(tile_img, ((dx + 1) * 256, (dy + 1) * 256))
+
+        if not has_any_tile:
+            return None
+
+        n = 2.0 ** z
+        x_norm = (lon + 180.0) / 360.0 * n
+        lat_r = math.radians(lat)
+        y_norm = (1.0 - math.asinh(math.tan(lat_r)) / math.pi) / 2.0 * n
+
+        center_px = (x_norm - cx_tile + 1) * 256.0
+        center_py = (y_norm - cy_tile + 1) * 256.0
+
+        m_per_px = (156543.03 * math.cos(lat_r)) / (2.0 ** z)
+        w_px = width_m / m_per_px
+        h_px = height_m / m_per_px
+
+        rotated = stitched.rotate(rot_deg, center=(center_px, center_py), resample=Image.BICUBIC)
+
+        crop_box = (
+            int(round(center_px - w_px / 2)),
+            int(round(center_py - h_px / 2)),
+            int(round(center_px + w_px / 2)),
+            int(round(center_py + h_px / 2))
+        )
+        cropped = rotated.crop(crop_box).resize((540, 380), Image.LANCZOS)
+
+        # Subtle dark tour-quality tint (30% dark navy blend)
+        dark_overlay = Image.new('RGB', (540, 380), (10, 17, 32))
+        blended = Image.blend(cropped, dark_overlay, alpha=0.30)
+        return blended
+
+    def generate_plot(self, dem_data, slope_pct, down_gx, down_gy, approach_angle_deg=0, course_name="Golf Course", hole_num=1, par=4, yardage=350, as_format="both", green_center_latlon=None):
         """
         Renders a Tour USGA 1:480 3-Panel Green Complex Booklet Page (540x1512 equivalent).
         Layout:
@@ -222,6 +307,23 @@ class GreenPlotter:
         else:
             levels = np.arange(-3.0, 3.5, 0.5)
 
+        # Fetch Esri World Imagery satellite background for Panels 1 & 2
+        sat_img = None
+        if green_center_latlon and len(green_center_latlon) == 2:
+            try:
+                g_lat, g_lon = green_center_latlon
+                sat_img = self._get_rotated_satellite_image(
+                    g_lat, g_lon, rot_deg, width_m=base_width_m, height_m=base_height_m_p12
+                )
+            except Exception as e:
+                print("Satellite fetch error:", e)
+
+        # 4x upsampled coordinates and surface values for silky smooth StrackaLine contours
+        X_smooth = zoom(X_rot, 4, order=1)
+        Y_smooth = zoom(Y_rot, 4, order=1)
+        Z_smooth = zoom(Z_feet, 4, order=3)
+        slope_smooth = np.clip(zoom(slope_pct, 4, order=3), 0, None)
+
         # ==============================================================
         # PANEL 1: ELEVATION PROFILE (Top: y = 0.7487 to 1.0)
         # ==============================================================
@@ -231,6 +333,9 @@ class GreenPlotter:
         ax_p1.set_xlim(all_minx, all_maxx)
         ax_p1.set_ylim(y_bottom_p12, y_top_p12)
         ax_p1.axis('off')
+
+        if sat_img:
+            ax_p1.imshow(sat_img, extent=[all_minx, all_maxx, y_bottom_p12, y_top_p12], origin='upper', zorder=0)
 
         # Hazards
         for w in local_water_rot:
@@ -244,20 +349,20 @@ class GreenPlotter:
                 ax_p1.fill(xb, yb, color='#e5dacc', zorder=1)
                 ax_p1.plot(xb, yb, color='#b0b0b0', linewidth=0.8, zorder=1)
 
-        # Elevation Mesh inside green
+        # Elevation Mesh inside green (SOLID OPAQUE, smooth continuous gradient)
         if local_green_rot:
             gx, gy = local_green_rot.exterior.xy
             clip_patch_p1 = PathPatch(Path(np.column_stack([gx, gy])), transform=ax_p1.transData, facecolor='none')
             ax_p1.add_patch(clip_patch_p1)
 
             try:
-                im_p1 = ax_p1.pcolormesh(X_rot, Y_rot, Z_feet, shading='gouraud', cmap=elev_cmap, alpha=0.9, zorder=2)
-                im_p1.set_clip_path(clip_patch_p1)
+                im_p1 = ax_p1.pcolormesh(X_smooth, Y_smooth, Z_smooth, shading='gouraud', cmap=elev_cmap, alpha=1.0, zorder=2)
+                set_clip(im_p1, clip_patch_p1)
 
-                cs_p1 = ax_p1.contour(X_rot, Y_rot, Z_feet, levels=levels, colors='white', linewidths=0.6, alpha=0.7, zorder=3)
-                for c in cs_p1.collections:
-                    c.set_clip_path(clip_patch_p1)
-            except: pass
+                cs_p1 = ax_p1.contour(X_smooth, Y_smooth, Z_smooth, levels=levels, colors='white', linewidths=0.6, alpha=0.75, zorder=3)
+                set_clip(cs_p1, clip_patch_p1)
+            except Exception as e:
+                print("P1 mesh error:", e)
 
             # 1.2m dashed fringe collar
             if fringe_rot and not fringe_rot.is_empty:
@@ -275,10 +380,12 @@ class GreenPlotter:
                          pivot='mid', zorder=5)
 
         # Title & Subtitle
-        ax_p1.text(all_minx + 2.0, y_top_p12 - 2.8, f"HOLE {hole_num} — GREEN ELEVATION PROFILE",
-                   fontsize=9.5, fontweight='bold', color='white', zorder=10)
-        ax_p1.text(all_maxx - 2.0, y_top_p12 - 2.8, 'USGA 1:480 SCALE (1" = 40 FT)',
-                   fontsize=7.5, fontweight='bold', color='#38bdf8', ha='right', zorder=10)
+        t1 = ax_p1.text(all_minx + 2.0, y_top_p12 - 2.8, f"HOLE {hole_num} — GREEN ELEVATION PROFILE",
+                        fontsize=9.5, fontweight='bold', color='white', zorder=10)
+        t1.set_path_effects([patheffects.withStroke(linewidth=2.5, foreground='#0a1120')])
+        t2 = ax_p1.text(all_maxx - 2.0, y_top_p12 - 2.8, 'USGA 1:480 SCALE (1" = 40 FT)',
+                        fontsize=7.5, fontweight='bold', color='#38bdf8', ha='right', zorder=10)
+        t2.set_path_effects([patheffects.withStroke(linewidth=2.0, foreground='#0a1120')])
 
         # Low <---> High Legend Bar
         bar_w = 11.0
@@ -303,6 +410,9 @@ class GreenPlotter:
         ax_p2.set_ylim(y_bottom_p12, y_top_p12)
         ax_p2.axis('off')
 
+        if sat_img:
+            ax_p2.imshow(sat_img, extent=[all_minx, all_maxx, y_bottom_p12, y_top_p12], origin='upper', zorder=0)
+
         for w in local_water_rot:
             if not w.is_empty:
                 xw, yw = w.exterior.xy
@@ -314,20 +424,20 @@ class GreenPlotter:
                 ax_p2.fill(xb, yb, color='#e5dacc', zorder=1)
                 ax_p2.plot(xb, yb, color='#b0b0b0', linewidth=0.8, zorder=1)
 
-        # Okabe-Ito Heatmap inside green
+        # Okabe-Ito Heatmap inside green (SOLID OPAQUE, smooth StrackaLine contour bands)
         if local_green_rot:
             gx, gy = local_green_rot.exterior.xy
             clip_patch_p2 = PathPatch(Path(np.column_stack([gx, gy])), transform=ax_p2.transData, facecolor='none')
             ax_p2.add_patch(clip_patch_p2)
 
             try:
-                im_p2 = ax_p2.pcolormesh(X_rot, Y_rot, slope_pct, shading='gouraud', cmap=okabe_cmap, norm=okabe_norm, alpha=0.92, zorder=2)
-                im_p2.set_clip_path(clip_patch_p2)
+                cf_p2 = ax_p2.contourf(X_smooth, Y_smooth, slope_smooth, levels=okabe_bounds, cmap=okabe_cmap, norm=okabe_norm, extend='max', alpha=1.0, zorder=2)
+                set_clip(cf_p2, clip_patch_p2)
 
-                cs_p2 = ax_p2.contour(X_rot, Y_rot, Z_feet, levels=levels, colors='white', linewidths=0.8, alpha=0.85, zorder=3)
-                for c in cs_p2.collections:
-                    c.set_clip_path(clip_patch_p2)
-            except: pass
+                cs_p2 = ax_p2.contour(X_smooth, Y_smooth, Z_smooth, levels=levels, colors='white', linewidths=0.8, alpha=0.85, zorder=3)
+                set_clip(cs_p2, clip_patch_p2)
+            except Exception as e:
+                print("P2 mesh error:", e)
 
             # 1.2m dashed fringe collar
             if fringe_rot and not fringe_rot.is_empty:
@@ -352,8 +462,9 @@ class GreenPlotter:
                          pivot='mid', zorder=5)
 
         # Title: HOLE X - FSG SLOPE HEATMAP
-        ax_p2.text(all_minx + 2.0, y_top_p12 - 2.8, f"HOLE {hole_num} - FSG SLOPE HEATMAP",
-                   fontsize=9.5, fontweight='bold', color='white', zorder=10)
+        t3 = ax_p2.text(all_minx + 2.0, y_top_p12 - 2.8, f"HOLE {hole_num} - FSG SLOPE HEATMAP",
+                        fontsize=9.5, fontweight='bold', color='white', zorder=10)
+        t3.set_path_effects([patheffects.withStroke(linewidth=2.5, foreground='#0a1120')])
 
         # Depth Badge Top Right
         badge_w = 9.5
@@ -365,9 +476,12 @@ class GreenPlotter:
         ax_p2.text(badge_x + badge_w / 2, badge_y + 1.1, f"DEPTH: {total_depth} YDS",
                    fontsize=7, fontweight='bold', color='white', ha='center', va='center', zorder=11)
 
-        # 10-Color Legend Bar at bottom of Panel 2
+        # 10-Color Legend Bar at bottom of Panel 2 with dark backing for contrast against satellite
         leg_bar_w = (all_maxx - all_minx - 4.0) / 10
         leg_bar_y = y_bottom_p12 + 1.6
+        rect_leg_bg = patches.Rectangle((all_minx + 1.2, y_bottom_p12 + 0.3), all_maxx - all_minx - 2.4, 2.8,
+                                        facecolor='#0a1120', alpha=0.88, zorder=9)
+        ax_p2.add_patch(rect_leg_bg)
         okabe_labels = ['0-1', '1-2', '2-3', '3-4', '4-5', '5-6', '6-7', '7-8', '8-9', '9+']
         for i, (col, lbl) in enumerate(zip(okabe_colors, okabe_labels)):
             bx = all_minx + 2.0 + i * leg_bar_w
@@ -459,8 +573,7 @@ class GreenPlotter:
                 clip_patch_p3 = PathPatch(Path(np.column_stack([xg, yg])), transform=ax_p3.transData, facecolor='none', edgecolor='none')
                 ax_p3.add_patch(clip_patch_p3)
                 cs_p3 = ax_p3.contour(X_rot, Y_rot, Z_feet, levels=levels, colors='#666666', linewidths=0.6, alpha=0.9, zorder=3)
-                for c in cs_p3.collections:
-                    c.set_clip_path(clip_patch_p3)
+                set_clip(cs_p3, clip_patch_p3)
             except: pass
 
         # Dense 2-yard stride fall-line arrows inside green (colored by Okabe-Ito, alpha=1.0)

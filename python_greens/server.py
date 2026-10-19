@@ -25,7 +25,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-GREEN_LAYOUT_VERSION = "v3_3panel_true1480"
+GREEN_LAYOUT_VERSION = "v3_3panel_esri"
 CACHE_DIR = os.path.join(os.path.dirname(__file__), "cache")
 os.makedirs(CACHE_DIR, exist_ok=True)
 
@@ -186,6 +186,13 @@ async def render_green(req: RenderGreenRequest):
             dem_data['Y'][:, 0]
         )
 
+        # Extract green center in (lat, lon) for Esri satellite imagery
+        g_latlon = None
+        if green_poly:
+            g_latlon = (green_poly.centroid.y, green_poly.centroid.x)
+        elif req.green_coord and len(req.green_coord) == 2:
+            g_latlon = (req.green_coord[1], req.green_coord[0])
+
         # Plot with Tour USGA 1:480 standards
         plotter = GreenPlotter(output_path=png_cache_path)
         plot_res = plotter.generate_plot(
@@ -197,7 +204,8 @@ async def render_green(req: RenderGreenRequest):
             course_name=req.course_name or "Golf Course",
             hole_num=req.hole_number,
             par=req.par,
-            yardage=req.yardage
+            yardage=req.yardage,
+            green_center_latlon=g_latlon
         )
 
         png_bytes = plot_res['png_bytes']

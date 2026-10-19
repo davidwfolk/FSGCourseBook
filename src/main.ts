@@ -23,7 +23,7 @@ let saveToNeonTimer: any = null;
       return pt.geometry.coordinates;
     }
 
-    export const GREEN_LAYOUT_VERSION = "v3_3panel_true1480";
+    export const GREEN_LAYOUT_VERSION = "v3_3panel_esri";
 
     // Fast MD5 implementation for cacheKey consistency with Python backend
     function md5(string: string): string {
@@ -4447,16 +4447,18 @@ let saveToNeonTimer: any = null;
       ctx.closePath();
       ctx.clip();
 
-      // 1-yard cell mesh: interpolating elevation from Low Blue -> Cyan -> Mint Green
-      for (let y = Math.floor(minGreenY) - 1; y <= Math.ceil(maxGreenY) + 1; y += 1) {
-        for (let x = Math.floor(minGreenX) - 1; x <= Math.ceil(maxGreenX) + 1; x += 1) {
+      // High-resolution cell mesh: interpolating elevation from Low Blue -> Cyan -> Mint Green
+      const cellStepP1 = 0.4;
+      const cellPxP1 = cellStepP1 * SCALE_1480;
+      for (let y = Math.floor(minGreenY) - 1; y <= Math.ceil(maxGreenY) + 1; y += cellStepP1) {
+        for (let x = Math.floor(minGreenX) - 1; x <= Math.ceil(maxGreenX) + 1; x += cellStepP1) {
           if (isPointInGreen(x, y)) {
             const z = evalElevation(x, y);
             const t = (z - minZ) / (maxZ - minZ || 1);
             ctx.fillStyle = getElevationColor(t);
             const sx = p1CX + x * SCALE_1480;
             const sy = p1CY - y * SCALE_1480;
-            ctx.fillRect(sx - 5.4, sy - 5.4, 11.2, 11.2);
+            ctx.fillRect(sx - cellPxP1 / 2, sy - cellPxP1 / 2, cellPxP1 + 0.5, cellPxP1 + 0.5);
           }
         }
       }
@@ -4574,15 +4576,17 @@ let saveToNeonTimer: any = null;
       ctx.closePath();
       ctx.clip();
 
-      // 1-yard cell mesh using 10-color Okabe-Ito slope palette
-      for (let y = Math.floor(minGreenY) - 1; y <= Math.ceil(maxGreenY) + 1; y += 1) {
-        for (let x = Math.floor(minGreenX) - 1; x <= Math.ceil(maxGreenX) + 1; x += 1) {
+      // High-resolution cell mesh using 10-color Okabe-Ito slope palette
+      const cellStepP2 = 0.4;
+      const cellPxP2 = cellStepP2 * SCALE_1480;
+      for (let y = Math.floor(minGreenY) - 1; y <= Math.ceil(maxGreenY) + 1; y += cellStepP2) {
+        for (let x = Math.floor(minGreenX) - 1; x <= Math.ceil(maxGreenX) + 1; x += cellStepP2) {
           if (isPointInGreen(x, y)) {
             const { localSlopePct } = evalGradients(x, y);
             ctx.fillStyle = getOkabeItoSlopeColor(localSlopePct);
             const sx = p2CX + x * SCALE_1480;
             const sy = p2CY - y * SCALE_1480;
-            ctx.fillRect(sx - 5.4, sy - 5.4, 11.2, 11.2);
+            ctx.fillRect(sx - cellPxP2 / 2, sy - cellPxP2 / 2, cellPxP2 + 0.5, cellPxP2 + 0.5);
           }
         }
       }
