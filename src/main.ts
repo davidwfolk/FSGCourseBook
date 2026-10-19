@@ -5590,20 +5590,23 @@ let saveToNeonTimer: any = null;
 
     async function loadSavedCoursesDropdown() {
       const sel = document.getElementById("saved-courses-select") as HTMLSelectElement | null;
-      if (!sel) return;
       try {
         const courses = await apiClient.getCourses();
-        if (!courses || courses.length === 0) {
-          sel.innerHTML = '<option value="">No Saved Courses in Neon</option>';
-          return;
+        if (sel) {
+          if (!courses || courses.length === 0) {
+            sel.innerHTML = '<option value="">No Saved Courses in Neon</option>';
+          } else {
+            sel.innerHTML = '<option value="">Saved Courses (Neon)...</option>' + courses.map((c: any) => {
+              const loc = [c.city, c.state].filter(Boolean).join(", ");
+              const holesBadge = c.holes_count ? ` (${c.holes_count}h)` : "";
+              return `<option value="${c.id}">${c.name}${loc ? " — " + loc : ""}${holesBadge}</option>`;
+            }).join("");
+          }
         }
-        sel.innerHTML = '<option value="">Saved Courses (Neon)...</option>' + courses.map((c: any) => {
-          const loc = [c.city, c.state].filter(Boolean).join(", ");
-          const holesBadge = c.holes_count ? ` (${c.holes_count}h)` : "";
-          return `<option value="${c.id}">${c.name}${loc ? " — " + loc : ""}${holesBadge}</option>`;
-        }).join("");
+        return courses || [];
       } catch (err) {
         console.warn("loadSavedCoursesDropdown error:", err);
+        return [];
       }
     }
 
@@ -5857,11 +5860,10 @@ let saveToNeonTimer: any = null;
     window.addEventListener("DOMContentLoaded", async () => {
       if (typeof lucide !== "undefined") lucide.createIcons();
       initFallbackMapHole();
-      await loadSavedCoursesDropdown();
+      const neonCourses = await loadSavedCoursesDropdown();
 
       // Neon-first boot: load courses from Neon in <100ms
       try {
-        const neonCourses = await apiClient.getCourses();
         if (neonCourses && neonCourses.length > 0) {
           console.log("Neon Postgres courses available:", neonCourses.length);
           // Look for courses with holes, prioritizing Lakeview
