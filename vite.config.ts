@@ -48,12 +48,14 @@ export default defineConfig(({ mode }) => {
 
             try {
               let body: any = null;
+              let rawBuffer = Buffer.alloc(0);
               if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS') {
                 const chunks: Buffer[] = [];
                 for await (const chunk of req) {
                   chunks.push(chunk);
                 }
-                const rawBody = Buffer.concat(chunks).toString();
+                rawBuffer = Buffer.concat(chunks);
+                const rawBody = rawBuffer.toString('utf8');
                 if (rawBody) {
                   try {
                     body = JSON.parse(rawBody);
@@ -82,6 +84,7 @@ export default defineConfig(({ mode }) => {
                 return res;
               };
               (req as any).body = body;
+              (req as any).rawBuffer = rawBuffer;
               (req as any).query = Object.fromEntries(parsedUrl.searchParams.entries());
 
               await handler(req, res);

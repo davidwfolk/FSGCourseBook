@@ -51,9 +51,17 @@ export default async function handler(req: any, res: any) {
       }
     });
   }
-
   try {
-    const body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
+    let body: any = {};
+    if (typeof req.body === 'string') {
+      try {
+        body = JSON.parse(req.body);
+      } catch {
+        body = {};
+      }
+    } else if (req.body && typeof req.body === 'object' && !Buffer.isBuffer(req.body)) {
+      body = req.body;
+    }
     const urlParams = new URL(req.url, `http://${req.headers?.host || 'localhost'}`).searchParams;
 
     const key = body.key || body.filename || urlParams.get('key') || urlParams.get('filename');
@@ -76,15 +84,59 @@ export default async function handler(req: any, res: any) {
 
     const publicBase = getEnv('R2_PUBLIC_URL').trim();
 
+    // 1. Direct proxy upload from frontend (bypasses browser CORS restrictions completely)
+    if (req.method === 'PUT') {
+      const buffer = (req as any).rawBuffer?.length
+        ? (req as any).rawBuffer
+        : (Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || ''));
+      const command = new PutObjectCommand({
+        Bucket: bucketName,
+        Key: key,
+        Body: buffer,
+        ContentType: contentType || 'image/png'
+      });
+      await s3.send(command);
+
+      const publicUrl = publicBase
+        ? `${publicBase.replace(/\/+$/, '')}/${key}`
+        : `/api/r2-presign?filename=${encodeURIComponent(key)}&operation=get&raw=1`;
+
+      return res.status(200).json({
+        success: true,
+        uploadUrl: `/api/r2-presign?filename=${encodeURIComponent(key)}`,
+        publicUrl,
+        key
+      });
+    }
+
+    // 2. Fetch raw image stream or presigned GET
     if (operation === 'get') {
+      if (urlParams.get('raw') === '1') {
+        const command = new GetObjectCommand({ Bucket: bucketName, Key: key });
+        const obj = await s3.send(command);
+        res.setHeader('Content-Type', obj.ContentType || 'image/png');
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        if (obj.Body) {
+          const stream = obj.Body as any;
+          if (typeof stream.pipe === 'function') {
+            return stream.pipe(res);
+          } else {
+            const bytes = await obj.Body.transformToByteArray();
+            return res.end(Buffer.from(bytes));
+          }
+        }
+      }
       const command = new GetObjectCommand({
         Bucket: bucketName,
         Key: key
       });
       const signedUrl = await getSignedUrl(s3, command, { expiresIn });
-      const publicUrl = publicBase ? `${publicBase.replace(/\/+$/, '')}/${key}` : signedUrl;
+      const publicUrl = publicBase
+        ? `${publicBase.replace(/\/+$/, '')}/${key}`
+        : `/api/r2-presign?filename=${encodeURIComponent(key)}&operation=get&raw=1`;
       return res.status(200).json({ url: signedUrl, publicUrl, uploadUrl: null, key, bucket: bucketName, operation: 'get' });
     } else {
+      // 3. Generate presigned URLs for upload
       const command = new PutObjectCommand({
         Bucket: bucketName,
         Key: key,
@@ -92,20 +144,16 @@ export default async function handler(req: any, res: any) {
       });
       const signedUrl = await getSignedUrl(s3, command, { expiresIn });
 
-      let publicUrl = publicBase ? `${publicBase.replace(/\/+$/, '')}/${key}` : '';
-      if (!publicUrl) {
-        try {
-          const getCmd = new GetObjectCommand({ Bucket: bucketName, Key: key });
-          publicUrl = await getSignedUrl(s3, getCmd, { expiresIn: 604800 });
-        } catch {
-          publicUrl = signedUrl.split('?')[0];
-        }
-      }
+      const localUploadUrl = `/api/r2-presign?filename=${encodeURIComponent(key)}`;
+      const publicUrl = publicBase
+        ? `${publicBase.replace(/\/+$/, '')}/${key}`
+        : `/api/r2-presign?filename=${encodeURIComponent(key)}&operation=get&raw=1`;
 
       return res.status(200).json({
-        uploadUrl: signedUrl,
+        uploadUrl: localUploadUrl,
+        directUploadUrl: signedUrl,
         publicUrl,
-        url: signedUrl,
+        url: localUploadUrl,
         key,
         bucket: bucketName,
         operation: 'put'

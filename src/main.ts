@@ -1127,7 +1127,7 @@ let saveToNeonTimer: any = null;
     });
 
     // Auto-Populate 25-Yard Fairway Layup / Approach Dots along Centerline
-    function autoPopulateFairwayDots(force = false) {
+    function autoPopulateFairwayDots(force = false, syncMap = true) {
       const model = computeSpatialHoleModel();
       const fwFeat = holeData.features.find((f) => f.type === "fairway");
       const clFeat = holeData.features.find((f) => f.type === "centerline");
@@ -1192,7 +1192,9 @@ let saveToNeonTimer: any = null;
         added++;
       });
 
-      syncMapFromState(false);
+      if (syncMap) {
+        syncMapFromState(false);
+      }
       return added;
     }
 
@@ -1964,12 +1966,9 @@ let saveToNeonTimer: any = null;
         if (elPct) elPct.value = String(holeData.meta?.greenSlopePct || 2.8);
 
         // Auto-generate fairway layup dots if not already present
-        autoPopulateFairwayDots(false);
-
-
+        autoPopulateFairwayDots(false, false);
 
         syncMapFromState(true);
-        renderSpreads();
         showToast(`Switched to Hole ${hNum}`);
       } else {
         // Initialize an empty slot for this hole
@@ -3971,7 +3970,9 @@ let saveToNeonTimer: any = null;
           const displaySrc = payload.image_url || dataUri;
           if (displaySrc) {
             const img = new Image();
-            img.crossOrigin = "anonymous";
+            if (!displaySrc.startsWith("data:")) {
+              img.crossOrigin = "anonymous";
+            }
             img.src = displaySrc;
             img.onload = () => {
               greenImageCache.set(displaySrc, img);
@@ -4018,7 +4019,9 @@ let saveToNeonTimer: any = null;
         let img = greenImageCache.get(imageSrc);
         if (!img) {
           img = new Image();
-          img.crossOrigin = "anonymous";
+          if (!imageSrc.startsWith("data:")) {
+            img.crossOrigin = "anonymous";
+          }
           img.src = imageSrc;
           img.onload = () => {
             renderGreenSpread(model);
