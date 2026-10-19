@@ -77,17 +77,9 @@ async def render_green(req: RenderGreenRequest):
                 with open(meta_cache_path, "r", encoding="utf-8") as mf:
                     meta = json.load(mf)
                     if meta.get("token") == cache_token and meta.get("layout_version") == GREEN_LAYOUT_VERSION:
-                        with open(png_cache_path, "rb") as pf:
-                            png_bytes = pf.read()
-                        svg_str = ""
-                        if os.path.exists(svg_cache_path):
-                            with open(svg_cache_path, "r", encoding="utf-8") as sf:
-                                svg_str = sf.read()
-                        
                         b64_img = base64.b64encode(png_bytes).decode("utf-8")
                         return {
                             "image_base64": f"data:image/png;base64,{b64_img}",
-                            "svg": svg_str,
                             "cached": True,
                             "hole_number": h_num,
                             "total_depth": meta.get("total_depth", 30),
@@ -208,12 +200,9 @@ async def render_green(req: RenderGreenRequest):
         )
 
         png_bytes = plot_res['png_bytes']
-        svg_str = plot_res.get('svg_str', '')
 
-        # Save SVG to cache
+        # Save metadata to cache
         try:
-            with open(svg_cache_path, "w", encoding="utf-8") as sf:
-                sf.write(svg_str)
             avg_slope = round(float(np.nanmean(slope_pct)), 1) if slope_pct is not None else 2.8
             total_depth = plot_res.get('total_depth', 30)
             with open(meta_cache_path, "w", encoding="utf-8") as mf:
@@ -231,7 +220,6 @@ async def render_green(req: RenderGreenRequest):
         b64_img = base64.b64encode(png_bytes).decode("utf-8")
         return {
             "image_base64": f"data:image/png;base64,{b64_img}",
-            "svg": svg_str,
             "cached": False,
             "hole_number": h_num,
             "total_depth": plot_res.get('total_depth', 30),

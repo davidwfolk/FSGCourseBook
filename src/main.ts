@@ -556,7 +556,7 @@ let saveToNeonTimer: any = null;
         courseHolesStore[curHoleNum] = JSON.parse(JSON.stringify(holeData));
 
         // FIX 1: Stop the LocalStorage Memory Leak
-        // Strip heavy image_base64 from all holes so localStorage stays lightweight (<50 KB)
+        // Strip heavy image_base64 and dead SVG from all holes so localStorage stays lightweight (<50 KB)
         const sanitizedStore: Record<string, any> = {};
         for (const [key, hole] of Object.entries(courseHolesStore)) {
           if (!hole) continue;
@@ -566,6 +566,12 @@ let saveToNeonTimer: any = null;
           }
           if (clonedHole.lidar_grid?.image_base64) {
             delete clonedHole.lidar_grid.image_base64;
+          }
+          if (clonedHole.lidarGrid?.svg) {
+            delete clonedHole.lidarGrid.svg;
+          }
+          if (clonedHole.lidar_grid?.svg) {
+            delete clonedHole.lidar_grid.svg;
           }
           sanitizedStore[key] = clonedHole;
         }
@@ -578,8 +584,8 @@ let saveToNeonTimer: any = null;
           mapZoom: map.getZoom(),
           greenZoom: parseFloat((document.getElementById("meta-green-zoom") as HTMLInputElement)?.value) || 2.3,
           corridorYds: parseFloat((document.getElementById("meta-corridor-yds") as HTMLInputElement)?.value) || 20,
-          courseHolesStore: sanitizedStore,
-          cachedCourseOSM
+          courseHolesStore: sanitizedStore
+          // Never persist heavy raw cachedCourseOSM vector trees to localStorage
         };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
       } catch (e) {
@@ -591,11 +597,16 @@ let saveToNeonTimer: any = null;
       try {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) return false;
+        // Purge legacy bloated payload if it exceeds 500 KB (from pre-R2 era)
+        if (raw.length > 500000) {
+          console.warn("Purging legacy oversized local storage payload:", raw.length, "bytes");
+          localStorage.removeItem(STORAGE_KEY);
+          return false;
+        }
         const parsed = JSON.parse(raw);
         if (!parsed || !parsed.courseHolesStore) return false;
 
         courseHolesStore = parsed.courseHolesStore;
-        cachedCourseOSM = parsed.cachedCourseOSM || null;
         const activeNum = parsed.activeHoleNum || 1;
 
         if (parsed.courseName) {
@@ -1569,6 +1580,14 @@ let saveToNeonTimer: any = null;
               features = [bestGreen, ...features.filter((f: any) => f.type !== "green")];
             }
 
+            const cleanLidar = h.lidar_grid ? { ...h.lidar_grid } : null;
+            if (cleanLidar) {
+              delete cleanLidar.svg;
+              if (cleanLidar.image_url) {
+                delete cleanLidar.image_base64;
+              }
+            }
+
             courseHolesStore[hNum] = {
               meta: {
                 holeNumber: hNum,
@@ -1577,7 +1596,7 @@ let saveToNeonTimer: any = null;
                 greenSlopePct: 2.8,
                 courseName: cleanCourseName
               },
-              lidarGrid: h.lidar_grid || null,
+              lidarGrid: cleanLidar,
               features
             };
           });
