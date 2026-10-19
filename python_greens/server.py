@@ -24,6 +24,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+GREEN_LAYOUT_VERSION = "v3_3panel_smooth"
 CACHE_DIR = os.path.join(os.path.dirname(__file__), "cache")
 os.makedirs(CACHE_DIR, exist_ok=True)
 
@@ -51,21 +52,24 @@ async def render_green(req: RenderGreenRequest):
     try:
         c_id = (req.course_id or "default").replace("/", "_").replace("\\", "_")
         h_num = req.hole_number
-        app_deg = round(req.approach_bearing, 1)
-        g_len = len(req.green_polygon)
-        
-        # Deterministic cache hash
-        cache_token = f"{c_id}_h{h_num}_b{app_deg}_g{g_len}"
-        png_cache_path = os.path.join(CACHE_DIR, f"hole_{c_id}_{h_num}.png")
-        svg_cache_path = os.path.join(CACHE_DIR, f"hole_{c_id}_{h_num}.svg")
-        meta_cache_path = os.path.join(CACHE_DIR, f"hole_{c_id}_{h_num}.json")
+        app_deg = round(req.approach_bearing)
+
+        # Include GREEN_LAYOUT_VERSION and full coordinate string in MD5 cache_token
+        coord_str = ";".join([f"{c[0]:.6f},{c[1]:.6f}" for c in (req.green_polygon or [])])
+        coord_hash = hashlib.md5(coord_str.encode("utf-8")).hexdigest()[:10]
+        cache_key = f"{c_id}_{h_num}_{GREEN_LAYOUT_VERSION}_{app_deg}_{coord_hash}"
+        cache_token = cache_key
+
+        png_cache_path = os.path.join(CACHE_DIR, f"hole_{cache_token}.png")
+        svg_cache_path = os.path.join(CACHE_DIR, f"hole_{cache_token}.svg")
+        meta_cache_path = os.path.join(CACHE_DIR, f"hole_{cache_token}.json")
         
         # Check cache if not force_refresh
         if not req.force_refresh and os.path.exists(png_cache_path) and os.path.exists(meta_cache_path):
             try:
                 with open(meta_cache_path, "r", encoding="utf-8") as mf:
                     meta = json.load(mf)
-                    if meta.get("token") == cache_token:
+                    if meta.get("token") == cache_token and meta.get("layout_version") == GREEN_LAYOUT_VERSION:
                         with open(png_cache_path, "rb") as pf:
                             png_bytes = pf.read()
                         svg_str = ""
@@ -80,7 +84,9 @@ async def render_green(req: RenderGreenRequest):
                             "cached": True,
                             "hole_number": h_num,
                             "total_depth": meta.get("total_depth", 30),
-                            "avg_slope": meta.get("avg_slope", 2.8)
+                            "avg_slope": meta.get("avg_slope", 2.8),
+                            "layout_version": GREEN_LAYOUT_VERSION,
+                            "cache_key": cache_key
                         }
             except Exception as e:
                 print("Cache read error:", e)
@@ -181,6 +187,8 @@ async def render_green(req: RenderGreenRequest):
             with open(meta_cache_path, "w", encoding="utf-8") as mf:
                 json.dump({
                     "token": cache_token,
+                    "cache_key": cache_key,
+                    "layout_version": GREEN_LAYOUT_VERSION,
                     "timestamp": os.path.getmtime(png_cache_path),
                     "total_depth": total_depth,
                     "avg_slope": avg_slope
@@ -195,7 +203,9 @@ async def render_green(req: RenderGreenRequest):
             "cached": False,
             "hole_number": h_num,
             "total_depth": plot_res.get('total_depth', 30),
-            "avg_slope": round(float(np.nanmean(slope_pct)), 1) if slope_pct is not None else 2.8
+            "avg_slope": round(float(np.nanmean(slope_pct)), 1) if slope_pct is not None else 2.8,
+            "layout_version": GREEN_LAYOUT_VERSION,
+            "cache_key": cache_key
         }
     except Exception as e:
         import traceback

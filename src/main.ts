@@ -23,12 +23,183 @@ let saveToNeonTimer: any = null;
       return pt.geometry.coordinates;
     }
 
-    // Chaikin corner-cutting polygon smoothing from FSG-Greens-Book/src/plotter.py
-    function smoothPolygonCoords(ringCoords, refinements = 2) {
-      if (!ringCoords || ringCoords.length < 4) return ringCoords;
-      let pts = ringCoords.slice(0, -1);
+    export const GREEN_LAYOUT_VERSION = "v3_3panel_smooth";
+
+    // Fast MD5 implementation for cacheKey consistency with Python backend
+    function md5(string: string): string {
+      function rotateLeft(lValue: number, iShiftBits: number) {
+        return (lValue << iShiftBits) | (lValue >>> (32 - iShiftBits));
+      }
+      function addUnsigned(lX: number, lY: number) {
+        const lX4 = (lX & 0x40000000);
+        const lY4 = (lY & 0x40000000);
+        const lX8 = (lX & 0x80000000);
+        const lY8 = (lY & 0x80000000);
+        const lResult = (lX & 0x3FFFFFFF) + (lY & 0x3FFFFFFF);
+        if (lX4 & lY4) return (lResult ^ 0x80000000 ^ lX8 ^ lY8);
+        if (lX4 | lY4) {
+          if (lResult & 0x40000000) return (lResult ^ 0xC0000000 ^ lX8 ^ lY8);
+          else return (lResult ^ 0x40000000 ^ lX8 ^ lY8);
+        } else {
+          return (lResult ^ lX8 ^ lY8);
+        }
+      }
+      function F(x: number, y: number, z: number) { return (x & y) | ((~x) & z); }
+      function G(x: number, y: number, z: number) { return (x & z) | (y & (~z)); }
+      function H(x: number, y: number, z: number) { return (x ^ y ^ z); }
+      function I(x: number, y: number, z: number) { return (y ^ (x | (~z))); }
+      function FF(a: number, b: number, c: number, d: number, x: number, s: number, ac: number) {
+        a = addUnsigned(a, addUnsigned(addUnsigned(F(b, c, d), x), ac));
+        return addUnsigned(rotateLeft(a, s), b);
+      }
+      function GG(a: number, b: number, c: number, d: number, x: number, s: number, ac: number) {
+        a = addUnsigned(a, addUnsigned(addUnsigned(G(b, c, d), x), ac));
+        return addUnsigned(rotateLeft(a, s), b);
+      }
+      function HH(a: number, b: number, c: number, d: number, x: number, s: number, ac: number) {
+        a = addUnsigned(a, addUnsigned(addUnsigned(H(b, c, d), x), ac));
+        return addUnsigned(rotateLeft(a, s), b);
+      }
+      function II(a: number, b: number, c: number, d: number, x: number, s: number, ac: number) {
+        a = addUnsigned(a, addUnsigned(addUnsigned(I(b, c, d), x), ac));
+        return addUnsigned(rotateLeft(a, s), b);
+      }
+      function convertToWordArray(str: string) {
+        let lWordCount;
+        const lMessageLength = str.length;
+        const lNumberOfWords_temp1 = lMessageLength + 8;
+        const lNumberOfWords_temp2 = (lNumberOfWords_temp1 - (lNumberOfWords_temp1 % 64)) / 64;
+        const lNumberOfWords = (lNumberOfWords_temp2 + 1) * 16;
+        const lWordArray = new Array(lNumberOfWords).fill(0);
+        let lBytePosition = 0;
+        let lByteCount = 0;
+        while (lByteCount < lMessageLength) {
+          lWordCount = (lByteCount - (lByteCount % 4)) / 4;
+          lBytePosition = (lByteCount % 4) * 8;
+          lWordArray[lWordCount] = (lWordArray[lWordCount] | (str.charCodeAt(lByteCount) << lBytePosition));
+          lByteCount++;
+        }
+        lWordCount = (lByteCount - (lByteCount % 4)) / 4;
+        lBytePosition = (lByteCount % 4) * 8;
+        lWordArray[lWordCount] = lWordArray[lWordCount] | (0x80 << lBytePosition);
+        lWordArray[lNumberOfWords - 2] = lMessageLength << 3;
+        lWordArray[lNumberOfWords - 1] = lMessageLength >>> 29;
+        return lWordArray;
+      }
+      function wordToHex(lValue: number) {
+        let WordToHexValue = '', lByte, lCount;
+        for (lCount = 0; lCount <= 3; lCount++) {
+          lByte = (lValue >>> (lCount * 8)) & 255;
+          const WordToHexValue_temp = '0' + lByte.toString(16);
+          WordToHexValue = WordToHexValue + WordToHexValue_temp.substr(WordToHexValue_temp.length - 2, 2);
+        }
+        return WordToHexValue;
+      }
+      const x = convertToWordArray(string);
+      let a = 0x67452301, b = 0xEFCDAB89, c = 0x98BADCFE, d = 0x10325476;
+      const S11 = 7, S12 = 12, S13 = 17, S14 = 22;
+      const S21 = 5, S22 = 9, S23 = 14, S24 = 20;
+      const S31 = 4, S32 = 11, S33 = 16, S34 = 23;
+      const S41 = 6, S42 = 10, S43 = 15, S44 = 21;
+      for (let k = 0; k < x.length; k += 16) {
+        const AA = a, BB = b, CC = c, DD = d;
+        a = FF(a, b, c, d, x[k + 0], S11, 0xD76AA478);
+        d = FF(d, a, b, c, x[k + 1], S12, 0xE8C7B756);
+        c = FF(c, d, a, b, x[k + 2], S13, 0x242070DB);
+        b = FF(b, c, d, a, x[k + 3], S14, 0xC1BDCEEE);
+        a = FF(a, b, c, d, x[k + 4], S11, 0xF57C0FAF);
+        d = FF(d, a, b, c, x[k + 5], S12, 0x4787C62A);
+        c = FF(c, d, a, b, x[k + 6], S13, 0xA8304613);
+        b = FF(b, c, d, a, x[k + 7], S14, 0xFD469501);
+        a = FF(a, b, c, d, x[k + 8], S11, 0x698098D8);
+        d = FF(d, a, b, c, x[k + 9], S12, 0x8B44F7AF);
+        c = FF(c, d, a, b, x[k + 10], S13, 0xFFFF5BB1);
+        b = FF(b, c, d, a, x[k + 11], S14, 0x895CD7BE);
+        a = FF(a, b, c, d, x[k + 12], S11, 0x6B901122);
+        d = FF(d, a, b, c, x[k + 13], S12, 0xFD987193);
+        c = FF(c, d, a, b, x[k + 14], S13, 0xA679438E);
+        b = FF(b, c, d, a, x[k + 15], S14, 0x49B40821);
+        a = GG(a, b, c, d, x[k + 1], S21, 0xF61E2562);
+        d = GG(d, a, b, c, x[k + 6], S22, 0xC040B340);
+        c = GG(c, d, a, b, x[k + 11], S23, 0x265E5A51);
+        b = GG(b, c, d, a, x[k + 0], S24, 0xE9B6C7AA);
+        a = GG(a, b, c, d, x[k + 5], S21, 0xD62F105D);
+        d = GG(d, a, b, c, x[k + 10], S22, 0x02441453);
+        c = GG(c, d, a, b, x[k + 15], S23, 0xD8A1E681);
+        b = GG(b, c, d, a, x[k + 4], S24, 0xE7D3FBC8);
+        a = GG(a, b, c, d, x[k + 9], S21, 0x21E1CDE6);
+        d = GG(d, a, b, c, x[k + 14], S22, 0xC33707D6);
+        c = GG(c, d, a, b, x[k + 3], S23, 0xF4D50D87);
+        b = GG(b, c, d, a, x[k + 8], S24, 0x455A14ED);
+        a = GG(a, b, c, d, x[k + 13], S21, 0xA9E3E905);
+        d = GG(d, a, b, c, x[k + 2], S22, 0xFCEFA3F8);
+        c = GG(c, d, a, b, x[k + 7], S23, 0x676F02D9);
+        b = GG(b, c, d, a, x[k + 12], S24, 0x8D2A4C8A);
+        a = HH(a, b, c, d, x[k + 5], S31, 0xFFFA3942);
+        d = HH(d, a, b, c, x[k + 8], S32, 0x8771F681);
+        c = HH(c, d, a, b, x[k + 11], S33, 0x6D9D6122);
+        b = HH(b, c, d, a, x[k + 14], S34, 0xFDE5380C);
+        a = HH(a, b, c, d, x[k + 1], S31, 0xA4BEEA44);
+        d = HH(d, a, b, c, x[k + 4], S32, 0x4BDECFA9);
+        c = HH(c, d, a, b, x[k + 7], S33, 0xF6BB4B60);
+        b = HH(b, c, d, a, x[k + 10], S34, 0xBEBFBC70);
+        a = HH(a, b, c, d, x[k + 13], S31, 0x289B7EC6);
+        d = HH(d, a, b, c, x[k + 0], S32, 0xEAA127FA);
+        c = HH(c, d, a, b, x[k + 3], S33, 0xD4EF3085);
+        b = HH(b, c, d, a, x[k + 6], S34, 0x04881D05);
+        a = HH(a, b, c, d, x[k + 9], S31, 0xD9D4D039);
+        d = HH(d, a, b, c, x[k + 12], S32, 0xE6DB99E5);
+        c = HH(c, d, a, b, x[k + 15], S33, 0x1FA27CF8);
+        b = HH(b, c, d, a, x[k + 2], S34, 0xC4AC5665);
+        a = II(a, b, c, d, x[k + 0], S41, 0xF4292244);
+        d = II(d, a, b, c, x[k + 7], S42, 0x432AFF97);
+        c = II(c, d, a, b, x[k + 14], S43, 0xAB9423A7);
+        b = II(b, c, d, a, x[k + 5], S44, 0xFC93A039);
+        a = II(a, b, c, d, x[k + 12], S41, 0x655B59C3);
+        d = II(d, a, b, c, x[k + 3], S42, 0x8F0CCC92);
+        c = II(c, d, a, b, x[k + 10], S43, 0xFFEFF47D);
+        b = II(b, c, d, a, x[k + 1], S44, 0x85845DD1);
+        a = II(a, b, c, d, x[k + 8], S41, 0x6FA87E4F);
+        d = II(d, a, b, c, x[k + 15], S42, 0xFE2CE6E0);
+        c = II(c, d, a, b, x[k + 6], S43, 0xA3014314);
+        b = II(b, c, d, a, x[k + 13], S44, 0x4E0811A1);
+        a = II(a, b, c, d, x[k + 4], S41, 0xF7537E82);
+        d = II(d, a, b, c, x[k + 11], S42, 0xBD3AF235);
+        c = II(c, d, a, b, x[k + 2], S43, 0x2AD7D2BB);
+        b = II(b, c, d, a, x[k + 9], S44, 0xEB86D391);
+        a = addUnsigned(a, AA);
+        b = addUnsigned(b, BB);
+        c = addUnsigned(c, CC);
+        d = addUnsigned(d, DD);
+      }
+      return (wordToHex(a) + wordToHex(b) + wordToHex(c) + wordToHex(d)).toLowerCase();
+    }
+
+    function computeCoordHash(coords: number[][]): string {
+      if (!coords || !Array.isArray(coords) || coords.length === 0) return "none";
+      const coordStr = coords.map((c: number[]) => `${c[0].toFixed(6)},${c[1].toFixed(6)}`).join(';');
+      return md5(coordStr).substring(0, 10);
+    }
+
+    // Chaikin corner-cutting polygon smoothing
+    function smoothPolygonCoords(ringCoords: number[][], refinements = 3): number[][] {
+      if (!ringCoords || ringCoords.length < 3) return ringCoords;
+      // Normalize: strip closing point if present and remove duplicate consecutive vertices
+      const raw = [...ringCoords];
+      if (raw.length > 1 && raw[0][0] === raw[raw.length - 1][0] && raw[0][1] === raw[raw.length - 1][1]) {
+        raw.pop();
+      }
+      let pts: number[][] = [];
+      for (let i = 0; i < raw.length; i++) {
+        const cur = raw[i];
+        const prev = pts[pts.length - 1];
+        if (!prev || Math.hypot(cur[0] - prev[0], cur[1] - prev[1]) > 1e-7) {
+          pts.push([cur[0], cur[1]]);
+        }
+      }
+      if (pts.length < 3) return ringCoords;
       for (let r = 0; r < refinements; r++) {
-        const nextPts = [];
+        const nextPts: number[][] = [];
         const n = pts.length;
         for (let i = 0; i < n; i++) {
           const p1 = pts[i];
@@ -827,6 +998,16 @@ let saveToNeonTimer: any = null;
       setTool("select");
       selectFeature(id);
       syncMapFromState();
+
+      const curHNum = parseInt((document.getElementById("meta-hole-num") as HTMLInputElement)?.value || "1", 10) || 1;
+      if (courseHolesStore[curHNum]) {
+        courseHolesStore[curHNum].features = JSON.parse(JSON.stringify(holeData.features));
+        if (activeTool === "green") {
+          courseHolesStore[curHNum].lidarGrid = null;
+        }
+      }
+      syncHoleToNeon(curHNum);
+
       showToast(`${activeTool.toUpperCase()} vector saved.`);
     }
 
@@ -1331,6 +1512,38 @@ let saveToNeonTimer: any = null;
               }
             }
 
+            // Enforce strictly ONE active green polygon per hole
+            const greenFeats = features.filter((f: any) => f.type === "green");
+            if (greenFeats.length > 1) {
+              const targetLat = h.green_lat ? parseFloat(h.green_lat) : null;
+              const targetLon = h.green_lon ? parseFloat(h.green_lon) : null;
+              let targetPt = (targetLat !== null && targetLon !== null && !isNaN(targetLat) && !isNaN(targetLon) && targetLat !== 0)
+                ? [targetLon, targetLat]
+                : null;
+              if (!targetPt) {
+                const clFeat = features.find((f: any) => f.type === "centerline");
+                if (clFeat && Array.isArray(clFeat.coords) && clFeat.coords.length > 0) {
+                  targetPt = clFeat.coords[clFeat.coords.length - 1];
+                }
+              }
+
+              let bestGreen = greenFeats[0];
+              if (targetPt) {
+                bestGreen = greenFeats.reduce((best, cur) => {
+                  try {
+                    const curCenter = turf.centroid(turf.polygon([cur.coords])).geometry.coordinates;
+                    const bestCenter = turf.centroid(turf.polygon([best.coords])).geometry.coordinates;
+                    const curDist = turf.distance(turf.point(targetPt), turf.point(curCenter));
+                    const bestDist = turf.distance(turf.point(targetPt), turf.point(bestCenter));
+                    return curDist < bestDist ? cur : best;
+                  } catch {
+                    return best;
+                  }
+                }, greenFeats[0]);
+              }
+              features = [bestGreen, ...features.filter((f: any) => f.type !== "green")];
+            }
+
             courseHolesStore[hNum] = {
               meta: {
                 holeNumber: hNum,
@@ -1568,6 +1781,23 @@ let saveToNeonTimer: any = null;
         }
       });
 
+      // Enforce strictly ONE active green polygon per hole
+      const greenFeats = newFeatures.filter((f) => f.type === "green");
+      if (greenFeats.length > 1) {
+        const bestGreen = greenFeats.reduce((best, cur) => {
+          try {
+            const curCenter = turf.centroid(turf.polygon([cur.coords])).geometry.coordinates;
+            const bestCenter = turf.centroid(turf.polygon([best.coords])).geometry.coordinates;
+            const curDist = turf.distance(turf.point(activeGreenCenter), turf.point(curCenter));
+            const bestDist = turf.distance(turf.point(activeGreenCenter), turf.point(bestCenter));
+            return curDist < bestDist ? cur : best;
+          } catch {
+            return best;
+          }
+        }, greenFeats[0]);
+        return [bestGreen, ...newFeatures.filter((f) => f.type !== "green")];
+      }
+
       return newFeatures;
     }
 
@@ -1640,11 +1870,6 @@ let saveToNeonTimer: any = null;
             }
             if (coords.length < 4) return;
 
-            // Only smooth if vertex count is very sparse (< 8) to preserve true OSM shape
-            if (coords.length < 8 && (gType === "green" || gType === "bunker")) {
-              coords = smoothPolygonCoords(coords, 1);
-            }
-
             try {
               const poly = turf.polygon([coords]);
               const center = turf.centroid(poly).geometry.coordinates;
@@ -1686,6 +1911,28 @@ let saveToNeonTimer: any = null;
 
       if (courseHolesStore[hNum] && courseHolesStore[hNum].features && courseHolesStore[hNum].features.length > 0) {
         holeData = JSON.parse(JSON.stringify(courseHolesStore[hNum]));
+        // Enforce strictly ONE active green polygon per hole
+        const greenFeats = holeData.features.filter((f: any) => f.type === "green");
+        if (greenFeats.length > 1) {
+          const clFeat = holeData.features.find((f: any) => f.type === "centerline");
+          const targetPt = (clFeat && clFeat.coords && clFeat.coords.length > 0) ? clFeat.coords[clFeat.coords.length - 1] : null;
+          let bestGreen = greenFeats[0];
+          if (targetPt) {
+            bestGreen = greenFeats.reduce((best, cur) => {
+              try {
+                const curCenter = turf.centroid(turf.polygon([cur.coords])).geometry.coordinates;
+                const bestCenter = turf.centroid(turf.polygon([best.coords])).geometry.coordinates;
+                const curDist = turf.distance(turf.point(targetPt), turf.point(curCenter));
+                const bestDist = turf.distance(turf.point(targetPt), turf.point(bestCenter));
+                return curDist < bestDist ? cur : best;
+              } catch {
+                return best;
+              }
+            }, greenFeats[0]);
+          }
+          holeData.features = [bestGreen, ...holeData.features.filter((f: any) => f.type !== "green")];
+          courseHolesStore[hNum].features = JSON.parse(JSON.stringify(holeData.features));
+        }
         const elPar = document.getElementById("meta-hole-par") as HTMLInputElement | null;
         if (elPar) elPar.value = String(holeData.meta?.par || 4);
         const elDir = document.getElementById("meta-green-slope-dir") as HTMLInputElement | null;
@@ -3598,8 +3845,11 @@ let saveToNeonTimer: any = null;
       const greenFeat = holeData.features.find((f: any) => f.type === "green");
       if (!greenFeat || !Array.isArray(greenFeat.coords) || greenFeat.coords.length < 3) return;
 
-      const cId = activeNeonCourseId || "default";
-      const token = `${cId}_h${holeNum}_len${greenFeat.coords.length}${force ? '_f' + Date.now() : ''}`;
+      const cId = (activeNeonCourseId || "default").replace(/\//g, "_").replace(/\\/g, "_");
+      const appDeg = Math.round(model.approachBearingDeg || 0);
+      const coordHash = computeCoordHash(greenFeat.coords);
+      const cacheKey = `${cId}_${holeNum}_${GREEN_LAYOUT_VERSION}_${appDeg}_${coordHash}`;
+      const token = `${cacheKey}${force ? '_f' + Date.now() : ''}`;
       if (pendingGreenRenderTokens.has(token)) return;
       pendingGreenRenderTokens.add(token);
 
@@ -3634,6 +3884,8 @@ let saveToNeonTimer: any = null;
         if (!res.ok) throw new Error(`Python render HTTP ${res.status}`);
         const payload = await res.json();
         if (payload && payload.image_base64) {
+          payload.layout_version = GREEN_LAYOUT_VERSION;
+          payload.cache_key = cacheKey;
           holeData.lidarGrid = payload;
           if (courseHolesStore[holeNum]) {
             courseHolesStore[holeNum].lidarGrid = payload;
@@ -3670,8 +3922,20 @@ let saveToNeonTimer: any = null;
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
 
-      // 0. Instant Render from Cached Python LiDAR if available in Neon lidar_grid
-      if (holeData.lidarGrid && holeData.lidarGrid.image_base64 && !forceRefreshGreen) {
+      const holeNum = parseInt((document.getElementById("meta-hole-num") as HTMLInputElement)?.value || "1", 10) || 1;
+      const cId = (activeNeonCourseId || "default").replace(/\//g, "_").replace(/\\/g, "_");
+      const appDeg = Math.round(model.approachBearingDeg || 0);
+      const greenFeat = holeData.features.find((f: any) => f.type === "green");
+      const coordHash = greenFeat && Array.isArray(greenFeat.coords) ? computeCoordHash(greenFeat.coords) : "none";
+      const cacheKey = `${cId}_${holeNum}_${GREEN_LAYOUT_VERSION}_${appDeg}_${coordHash}`;
+
+      const isCacheValid = holeData.lidarGrid &&
+        holeData.lidarGrid.image_base64 &&
+        holeData.lidarGrid.layout_version === GREEN_LAYOUT_VERSION &&
+        holeData.lidarGrid.cache_key === cacheKey;
+
+      // 0. Instant Render from Cached Python LiDAR if valid and layout version matches
+      if (isCacheValid && !forceRefreshGreen) {
         let img = greenImageCache.get(holeData.lidarGrid.image_base64);
         if (!img) {
           img = new Image();
@@ -3688,16 +3952,14 @@ let saveToNeonTimer: any = null;
         }
       }
 
-      // If lidarGrid not cached or explicitly refreshing, trigger Python engine
-      if (!holeData.lidarGrid || !holeData.lidarGrid.image_base64 || forceRefreshGreen) {
-        triggerPythonGreenRender(model, forceRefreshGreen);
+      // If layout_version is missing/mismatched or cache_key differs, ignore stale image and trigger Python engine
+      if (!isCacheValid || forceRefreshGreen) {
+        triggerPythonGreenRender(model, !isCacheValid || forceRefreshGreen);
       }
 
-      const holeNum = parseInt((document.getElementById("meta-hole-num") as HTMLInputElement)?.value || "1", 10) || 1;
       const holePar = parseInt((document.getElementById("meta-hole-par") as HTMLInputElement)?.value || "4", 10) || 4;
       const courseName = (document.getElementById("meta-course-name") as HTMLInputElement)?.value || "Lakeview";
       const holeYards = model.totalHoleYards || 350;
-      const greenFeat = holeData.features.find((f: any) => f.type === "green");
       const greenCoord = model.greenCentroidCoord || model.greenCoord || [0, 0];
       const pivotCoord = model.pivotCoord || model.approachOriginCoord || model.teeCoord || [0, 0];
       const gLatRad = (greenCoord[1] * Math.PI) / 180;
@@ -3744,7 +4006,8 @@ let saveToNeonTimer: any = null;
       // Green Polygon in local yards:
       let greenPolyYards: { x: number; y: number }[] = [];
       if (greenFeat && Array.isArray(greenFeat.coords) && greenFeat.coords.length >= 3) {
-        greenPolyYards = greenFeat.coords.map((c: number[]) => {
+        const smoothedCoords = smoothPolygonCoords(greenFeat.coords, 3);
+        greenPolyYards = smoothedCoords.map((c: number[]) => {
           const pt = toGreenYards(c[0], c[1]);
           return { x: pt.xYd, y: pt.yYd };
         });

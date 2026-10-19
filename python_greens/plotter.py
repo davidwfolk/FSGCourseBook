@@ -5,6 +5,8 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+from matplotlib.path import Path
+from matplotlib.patches import PathPatch
 from matplotlib.colors import LinearSegmentedColormap, ListedColormap, BoundaryNorm
 from shapely.geometry import Point as ShPoint, Polygon, LineString
 from shapely.affinity import rotate
@@ -237,15 +239,26 @@ class GreenPlotter:
 
         # Elevation Mesh inside green
         if local_green_rot:
-            Z_masked = Z_feet.copy()
-            Z_masked[~mask_green] = np.nan
+            xg, yg = local_green_rot.exterior.xy
+            clip_patch_p1 = PathPatch(Path(np.column_stack([xg, yg])), transform=ax_p1.transData, facecolor='none', edgecolor='none')
+            ax_p1.add_patch(clip_patch_p1)
+
             try:
-                ax_p1.contourf(X_rot, Y_rot, Z_masked, levels=30, cmap=elev_cmap, alpha=0.85, zorder=2)
-                ax_p1.contour(X_rot, Y_rot, Z_masked, levels=levels, colors='white', linewidths=0.6, alpha=0.6, zorder=3)
+                im_p1 = ax_p1.pcolormesh(X_rot, Y_rot, Z_feet, shading='gouraud', cmap=elev_cmap, alpha=0.9, zorder=2)
+                im_p1.set_clip_path(clip_patch_p1)
+
+                cs_p1 = ax_p1.contour(X_rot, Y_rot, Z_feet, levels=levels, colors='white', linewidths=0.6, alpha=0.7, zorder=3)
+                for c in cs_p1.collections:
+                    c.set_clip_path(clip_patch_p1)
             except: pass
 
-            xg, yg = local_green_rot.exterior.xy
-            ax_p1.plot(xg, yg, color='white', linewidth=2.0, zorder=4)
+            # 1.2m dashed fringe collar
+            if fringe_rot and not fringe_rot.is_empty:
+                xf, yf = fringe_rot.exterior.xy
+                ax_p1.plot(xf, yf, color='#777777', linestyle=(0, (4, 4)), linewidth=0.9, zorder=17)
+
+            # Smooth green perimeter outline
+            ax_p1.plot(xg, yg, color='#3a8c54', linewidth=2.0, zorder=18)
 
         # Dark navy downhill fall-line arrows
         if len(pg_x) > 0:
@@ -295,15 +308,27 @@ class GreenPlotter:
 
         # Okabe-Ito Heatmap inside green
         if local_green_rot:
-            S_masked = slope_pct.copy()
-            S_masked[~mask_green] = np.nan
+            xg, yg = local_green_rot.exterior.xy
+            clip_patch_p2 = PathPatch(Path(np.column_stack([xg, yg])), transform=ax_p2.transData, facecolor='none', edgecolor='none')
+            ax_p2.add_patch(clip_patch_p2)
+
             try:
-                ax_p2.contourf(X_rot, Y_rot, S_masked, levels=okabe_bounds, cmap=okabe_cmap, norm=okabe_norm, extend='max', alpha=0.85, zorder=2)
-                ax_p2.contour(X_rot, Y_rot, Z_feet, levels=levels, colors='white', linewidths=0.8, alpha=0.85, zorder=3)
+                cf_p2 = ax_p2.contourf(X_rot, Y_rot, slope_pct, levels=okabe_bounds, cmap=okabe_cmap, norm=okabe_norm, extend='max', alpha=0.88, zorder=2)
+                for c in cf_p2.collections:
+                    c.set_clip_path(clip_patch_p2)
+
+                cs_p2 = ax_p2.contour(X_rot, Y_rot, Z_feet, levels=levels, colors='white', linewidths=0.8, alpha=0.85, zorder=3)
+                for c in cs_p2.collections:
+                    c.set_clip_path(clip_patch_p2)
             except: pass
 
-            xg, yg = local_green_rot.exterior.xy
-            ax_p2.plot(xg, yg, color='white', linewidth=2.0, zorder=4)
+            # 1.2m dashed fringe collar
+            if fringe_rot and not fringe_rot.is_empty:
+                xf, yf = fringe_rot.exterior.xy
+                ax_p2.plot(xf, yf, color='#777777', linestyle=(0, (4, 4)), linewidth=0.9, zorder=17)
+
+            # Smooth green perimeter outline
+            ax_p2.plot(xg, yg, color='#3a8c54', linewidth=2.0, zorder=18)
 
         # Bold white break arrows inside green (alpha = 1.0)
         if len(pg_x) > 0:
@@ -423,9 +448,11 @@ class GreenPlotter:
 
             # 0.5-ft contour lines in #666666
             try:
-                Z_masked = Z_feet.copy()
-                Z_masked[~mask_green] = np.nan
-                ax_p3.contour(X_rot, Y_rot, Z_masked, levels=levels, colors='#666666', linewidths=0.6, alpha=0.9, zorder=3)
+                clip_patch_p3 = PathPatch(Path(np.column_stack([xg, yg])), transform=ax_p3.transData, facecolor='none', edgecolor='none')
+                ax_p3.add_patch(clip_patch_p3)
+                cs_p3 = ax_p3.contour(X_rot, Y_rot, Z_feet, levels=levels, colors='#666666', linewidths=0.6, alpha=0.9, zorder=3)
+                for c in cs_p3.collections:
+                    c.set_clip_path(clip_patch_p3)
             except: pass
 
         # Dense 2-yard stride fall-line arrows inside green (colored by Okabe-Ito, alpha=1.0)
