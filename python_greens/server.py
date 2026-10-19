@@ -25,7 +25,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-GREEN_LAYOUT_VERSION = "v3_3panel_smooth"
+GREEN_LAYOUT_VERSION = "v3_3panel_true1480"
 CACHE_DIR = os.path.join(os.path.dirname(__file__), "cache")
 os.makedirs(CACHE_DIR, exist_ok=True)
 
@@ -68,7 +68,6 @@ async def render_green(req: RenderGreenRequest):
         cache_token = cache_key
 
         png_cache_path = os.path.join(CACHE_DIR, f"hole_{cache_token}.png")
-        svg_cache_path = os.path.join(CACHE_DIR, f"hole_{cache_token}.svg")
         meta_cache_path = os.path.join(CACHE_DIR, f"hole_{cache_token}.json")
         
         # Check cache if not force_refresh
@@ -77,7 +76,9 @@ async def render_green(req: RenderGreenRequest):
                 with open(meta_cache_path, "r", encoding="utf-8") as mf:
                     meta = json.load(mf)
                     if meta.get("token") == cache_token and meta.get("layout_version") == GREEN_LAYOUT_VERSION:
-                        b64_img = base64.b64encode(png_bytes).decode("utf-8")
+                        with open(png_cache_path, "rb") as pf:
+                            cached_png_bytes = pf.read()
+                        b64_img = base64.b64encode(cached_png_bytes).decode("utf-8")
                         return {
                             "image_base64": f"data:image/png;base64,{b64_img}",
                             "cached": True,

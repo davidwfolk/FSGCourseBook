@@ -154,7 +154,10 @@ class GreenPlotter:
         # USGA 1:480 Scale dimensions:
         # Canvas 540px wide at 10.8 px/yd = 50 yards = 45.72 meters
         base_width_m = 45.72
-        base_height_m = 32.0  # ~35 yards height per green subpanel
+        # Panels 1 and 2 are 380px tall -> 380 / 540 * 45.72 = 32.176 meters
+        base_height_m_p12 = base_width_m * (380.0 / 540.0)
+        # Panel 3 is 500px tall -> 500 / 540 * 45.72 = 42.3333 meters
+        base_height_m_p3 = base_width_m * (500.0 / 540.0)
         
         all_minx = cx - base_width_m / 2
         all_maxx = cx + base_width_m / 2
@@ -166,8 +169,11 @@ class GreenPlotter:
             total_depth = int(round((maxy - miny) / yard_to_m))
             y_center = (miny + maxy) / 2
             
-        y_bottom = y_center - base_height_m * 0.48
-        y_top = y_center + base_height_m * 0.52
+        y_bottom_p12 = y_center - base_height_m_p12 * 0.48
+        y_top_p12 = y_center + base_height_m_p12 * 0.52
+
+        y_bottom_p3 = y_center - base_height_m_p3 * 0.48
+        y_top_p3 = y_center + base_height_m_p3 * 0.52
 
         # Masks for arrows & surfaces
         mask_green = np.zeros(X_rot.shape, dtype=bool)
@@ -221,8 +227,9 @@ class GreenPlotter:
         # ==============================================================
         ax_p1 = fig.add_axes([0, 0.7487, 1, 0.2513])
         ax_p1.set_facecolor('#0a1120')
+        ax_p1.set_aspect('equal')
         ax_p1.set_xlim(all_minx, all_maxx)
-        ax_p1.set_ylim(y_bottom, y_top)
+        ax_p1.set_ylim(y_bottom_p12, y_top_p12)
         ax_p1.axis('off')
 
         # Hazards
@@ -268,15 +275,15 @@ class GreenPlotter:
                          pivot='mid', zorder=5)
 
         # Title & Subtitle
-        ax_p1.text(all_minx + 2.0, y_top - 2.8, f"HOLE {hole_num} — GREEN ELEVATION PROFILE",
+        ax_p1.text(all_minx + 2.0, y_top_p12 - 2.8, f"HOLE {hole_num} — GREEN ELEVATION PROFILE",
                    fontsize=9.5, fontweight='bold', color='white', zorder=10)
-        ax_p1.text(all_maxx - 2.0, y_top - 2.8, 'USGA 1:480 SCALE (1" = 40 FT)',
+        ax_p1.text(all_maxx - 2.0, y_top_p12 - 2.8, 'USGA 1:480 SCALE (1" = 40 FT)',
                    fontsize=7.5, fontweight='bold', color='#38bdf8', ha='right', zorder=10)
 
         # Low <---> High Legend Bar
         bar_w = 11.0
         bar_x = all_maxx - bar_w - 2.0
-        bar_y = y_bottom + 1.6
+        bar_y = y_bottom_p12 + 1.6
         rect_p1 = patches.Rectangle((bar_x, bar_y), bar_w, 1.4, facecolor='#06b6d4', edgecolor='white', linewidth=0.8, zorder=10)
         ax_p1.add_patch(rect_p1)
         ax_p1.text(bar_x, bar_y + 1.8, "LOW", fontsize=6, fontweight='bold', color='white', ha='left', zorder=10)
@@ -291,8 +298,9 @@ class GreenPlotter:
         # ==============================================================
         ax_p2 = fig.add_axes([0, 0.4974, 1, 0.2513])
         ax_p2.set_facecolor('#0a1120')
+        ax_p2.set_aspect('equal')
         ax_p2.set_xlim(all_minx, all_maxx)
-        ax_p2.set_ylim(y_bottom, y_top)
+        ax_p2.set_ylim(y_bottom_p12, y_top_p12)
         ax_p2.axis('off')
 
         for w in local_water_rot:
@@ -344,13 +352,13 @@ class GreenPlotter:
                          pivot='mid', zorder=5)
 
         # Title: HOLE X - FSG SLOPE HEATMAP
-        ax_p2.text(all_minx + 2.0, y_top - 2.8, f"HOLE {hole_num} - FSG SLOPE HEATMAP",
+        ax_p2.text(all_minx + 2.0, y_top_p12 - 2.8, f"HOLE {hole_num} - FSG SLOPE HEATMAP",
                    fontsize=9.5, fontweight='bold', color='white', zorder=10)
 
         # Depth Badge Top Right
         badge_w = 9.5
         badge_x = all_maxx - badge_w - 2.0
-        badge_y = y_top - 4.2
+        badge_y = y_top_p12 - 4.2
         rect_badge = patches.FancyBboxPatch((badge_x, badge_y), badge_w, 2.2, boxstyle="round,pad=0.3",
                                             facecolor='#0f172a', edgecolor='#f97316', linewidth=1.2, zorder=10)
         ax_p2.add_patch(rect_badge)
@@ -359,7 +367,7 @@ class GreenPlotter:
 
         # 10-Color Legend Bar at bottom of Panel 2
         leg_bar_w = (all_maxx - all_minx - 4.0) / 10
-        leg_bar_y = y_bottom + 1.6
+        leg_bar_y = y_bottom_p12 + 1.6
         okabe_labels = ['0-1', '1-2', '2-3', '3-4', '4-5', '5-6', '6-7', '7-8', '8-9', '9+']
         for i, (col, lbl) in enumerate(zip(okabe_colors, okabe_labels)):
             bx = all_minx + 2.0 + i * leg_bar_w
@@ -376,8 +384,9 @@ class GreenPlotter:
         # ==============================================================
         ax_p3 = fig.add_axes([0, 0.1667, 1, 0.3307])
         ax_p3.set_facecolor('#ffffff')
+        ax_p3.set_aspect('equal')
         ax_p3.set_xlim(all_minx, all_maxx)
-        ax_p3.set_ylim(y_bottom, y_top)
+        ax_p3.set_ylim(y_bottom_p3, y_top_p3)
         ax_p3.axis('off')
 
         for w in local_water_rot:
@@ -407,14 +416,14 @@ class GreenPlotter:
             grid_5yd_m = 5 * yard_to_m
             minx_g, miny_g, maxx_g, maxy_g = local_green_rot.bounds
 
-            start_ny1 = math.floor((y_bottom - miny_g) / grid_1yd_m)
-            end_ny1 = math.ceil((y_top - miny_g) / grid_1yd_m)
+            start_ny1 = math.floor((y_bottom_p3 - miny_g) / grid_1yd_m)
+            end_ny1 = math.ceil((y_top_p3 - miny_g) / grid_1yd_m)
             for n in range(start_ny1, end_ny1 + 1):
                 y_l = miny_g + n * grid_1yd_m
                 ax_p3.plot([all_minx, all_maxx], [y_l, y_l], color='#f0f0f0', linewidth=0.4, zorder=2)
 
-            start_ny5 = math.floor((y_bottom - miny_g) / grid_5yd_m)
-            end_ny5 = math.ceil((y_top - miny_g) / grid_5yd_m)
+            start_ny5 = math.floor((y_bottom_p3 - miny_g) / grid_5yd_m)
+            end_ny5 = math.ceil((y_top_p3 - miny_g) / grid_5yd_m)
             for n in range(start_ny5, end_ny5 + 1):
                 y_l = miny_g + n * grid_5yd_m
                 ax_p3.plot([all_minx, all_maxx], [y_l, y_l], color='#d5d5d5', linewidth=0.7, zorder=2)
@@ -423,13 +432,13 @@ class GreenPlotter:
             end_nx1 = math.ceil((all_maxx - cx) / grid_1yd_m)
             for n in range(start_nx1, end_nx1 + 1):
                 x_l = cx + n * grid_1yd_m
-                ax_p3.plot([x_l, x_l], [y_bottom, y_top], color='#f0f0f0', linewidth=0.4, zorder=2)
+                ax_p3.plot([x_l, x_l], [y_bottom_p3, y_top_p3], color='#f0f0f0', linewidth=0.4, zorder=2)
 
             start_nx5 = math.floor((all_minx - cx) / grid_5yd_m)
             end_nx5 = math.ceil((all_maxx - cx) / grid_5yd_m)
             for n in range(start_nx5, end_nx5 + 1):
                 x_l = cx + n * grid_5yd_m
-                ax_p3.plot([x_l, x_l], [y_bottom, y_top], color='#d5d5d5', linewidth=0.7, zorder=2)
+                ax_p3.plot([x_l, x_l], [y_bottom_p3, y_top_p3], color='#d5d5d5', linewidth=0.7, zorder=2)
 
             # Perimeter depth labels hugging green perimeter along every 5-yard line
             curr_y = miny_g
@@ -483,12 +492,11 @@ class GreenPlotter:
 
         # Compass & Course Name Top Left
         cx_comp = all_minx + 4.5
-        cy_comp = y_top - 4.5
-        # Compass angle in Matplotlib:
-        # Heading north is polar angle pi/2 - rot_deg
-        comp_rad = math.radians(90 - rot_deg)
-        c_cos, c_sin = math.cos(comp_rad), math.sin(comp_rad)
-        def rot_comp(px, py): return (cx_comp + px * c_cos - py * c_sin, cy_comp + px * c_sin + py * c_cos)
+        cy_comp = y_top_p3 - 4.5
+        # Compass needle in approach-rotated coordinates:
+        # True North unit vector in rotated frame is (-ux, uy)
+        def rot_comp(px, py):
+            return (cx_comp + px * uy - py * ux, cy_comp + px * ux + py * uy)
 
         p1_c = rot_comp(0, 1.6)
         p2_c = rot_comp(-0.8, -1.0)
@@ -502,9 +510,9 @@ class GreenPlotter:
                    fontsize=8, fontweight='bold', color='#111111', ha='left', va='center', zorder=12)
 
         # Total Green Depth Top Right
-        ax_p3.text(all_maxx - 2.5, y_top - 3.5, f"{total_depth}",
+        ax_p3.text(all_maxx - 2.5, y_top_p3 - 3.5, f"{total_depth}",
                    fontsize=20, fontweight='bold', color='#222222', ha='right', va='center', zorder=12)
-        ax_p3.text(all_maxx - 2.5, y_top - 6.5, "YDS DEPTH",
+        ax_p3.text(all_maxx - 2.5, y_top_p3 - 6.5, "YDS DEPTH",
                    fontsize=6, fontweight='bold', color='#666666', ha='right', va='center', zorder=12)
 
         # ==============================================================
@@ -526,15 +534,15 @@ class GreenPlotter:
         for ly in np.linspace(0.28, 0.65, 5):
             ax_notes.plot([0.08, 0.92], [ly, ly], color='#e2e8f0', linewidth=1.0, transform=ax_notes.transAxes)
 
-        # Bottom circle badges
-        c_left = patches.Circle((0.15, 0.15), 0.09, facecolor='white', edgecolor='#5c805c', linewidth=1.4, transform=ax_notes.transAxes, zorder=12)
+        # Bottom circle badges (aspect-corrected Ellipse for 540x252 axes so they render as true circles)
+        c_left = patches.Ellipse((0.15, 0.20), width=0.08, height=0.1714, facecolor='white', edgecolor='#5c805c', linewidth=1.4, transform=ax_notes.transAxes, zorder=12)
         ax_notes.add_patch(c_left)
-        ax_notes.text(0.15, 0.18, f"PAR {par}", fontsize=7.5, fontweight='bold', ha='center', va='center', color='#222222', transform=ax_notes.transAxes, zorder=13)
-        ax_notes.text(0.15, 0.12, f"{yardage} YDS", fontsize=6, fontweight='bold', ha='center', va='center', color='#27ae60', transform=ax_notes.transAxes, zorder=13)
+        ax_notes.text(0.15, 0.23, f"PAR {par}", fontsize=7.5, fontweight='bold', ha='center', va='center', color='#222222', transform=ax_notes.transAxes, zorder=13)
+        ax_notes.text(0.15, 0.17, f"{yardage} YDS", fontsize=6, fontweight='bold', ha='center', va='center', color='#27ae60', transform=ax_notes.transAxes, zorder=13)
 
-        c_right = patches.Circle((0.85, 0.15), 0.09, facecolor='white', edgecolor='#5c805c', linewidth=1.4, transform=ax_notes.transAxes, zorder=12)
+        c_right = patches.Ellipse((0.85, 0.20), width=0.08, height=0.1714, facecolor='white', edgecolor='#5c805c', linewidth=1.4, transform=ax_notes.transAxes, zorder=12)
         ax_notes.add_patch(c_right)
-        ax_notes.text(0.85, 0.15, f"{hole_num}", fontsize=14, fontweight='bold', ha='center', va='center', color='#222222', transform=ax_notes.transAxes, zorder=13)
+        ax_notes.text(0.85, 0.20, f"{hole_num}", fontsize=14, fontweight='bold', ha='center', va='center', color='#222222', transform=ax_notes.transAxes, zorder=13)
 
         # Outer green border around entire 3-panel sheet
         rect_border = plt.Rectangle((0, 0), 1, 1, transform=fig.transFigure, linewidth=5, edgecolor='#5c805c', facecolor='none', zorder=50)
@@ -550,11 +558,6 @@ class GreenPlotter:
         plt.savefig(buf_png, format='png', facecolor='white', dpi=100)
         buf_png.seek(0)
         result['png_bytes'] = buf_png.getvalue()
-        
-        buf_svg = io.BytesIO()
-        plt.savefig(buf_svg, format='svg', facecolor='white')
-        buf_svg.seek(0)
-        result['svg_str'] = buf_svg.getvalue().decode('utf-8')
         result['total_depth'] = total_depth
         
         plt.close(fig)

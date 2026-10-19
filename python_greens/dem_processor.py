@@ -59,13 +59,16 @@ class DEMProcessor:
             idx += len(fairways)
             res_dict['local_rough'] = list(gdf_meters.geometry[idx:idx+len(rough)])
             
-            # Fetch DEM
-            if 'hole_line' in res_dict and 'local_green_poly' in res_dict:
+            # Fetch DEM for the green complex (green + local hazards + margin)
+            green_poly = res_dict.get('local_green_poly')
+            hazards = res_dict.get('local_bunkers', []) + res_dict.get('local_water', [])
+            geoms_to_bound = [green_poly] + hazards if green_poly else hazards
+            if geoms_to_bound:
                 from shapely.geometry import GeometryCollection
-                gc = GeometryCollection([res_dict['hole_line'], res_dict['local_green_poly']])
-                bbox_polygon = gc.buffer(20).envelope
+                gc = GeometryCollection(geoms_to_bound)
+                bbox_polygon = gc.buffer(35.0).envelope
             else:
-                bbox_polygon = res_dict['local_green_poly'].buffer(20).envelope
+                bbox_polygon = Point(0, 0).buffer(40.0).envelope
             
             try:
                 # get_map expects layer, geom, resolution in meters
@@ -75,6 +78,15 @@ class DEMProcessor:
                 Z_meters = dem_da.values
                 X_1d = dem_da.x.values
                 Y_1d = dem_da.y.values
+
+                # Ensure X_1d and Y_1d are strictly monotonically increasing (South to North, West to East)
+                if len(Y_1d) > 1 and Y_1d[0] > Y_1d[-1]:
+                    Y_1d = Y_1d[::-1]
+                    Z_meters = np.flipud(Z_meters)
+                if len(X_1d) > 1 and X_1d[0] > X_1d[-1]:
+                    X_1d = X_1d[::-1]
+                    Z_meters = np.fliplr(Z_meters)
+
                 X, Y = np.meshgrid(X_1d, Y_1d)
                 
                 # Add some slight gaussian smoothing to real data to clean up micro-noise

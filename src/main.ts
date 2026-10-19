@@ -23,7 +23,7 @@ let saveToNeonTimer: any = null;
       return pt.geometry.coordinates;
     }
 
-    export const GREEN_LAYOUT_VERSION = "v3_3panel_smooth";
+    export const GREEN_LAYOUT_VERSION = "v3_3panel_true1480";
 
     // Fast MD5 implementation for cacheKey consistency with Python backend
     function md5(string: string): string {
