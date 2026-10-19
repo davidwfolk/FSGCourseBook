@@ -25,7 +25,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-GREEN_LAYOUT_VERSION = "v3_3panel_esri"
+GREEN_LAYOUT_VERSION = "v4_clean_panels"
 CACHE_DIR = os.path.join(os.path.dirname(__file__), "cache")
 os.makedirs(CACHE_DIR, exist_ok=True)
 

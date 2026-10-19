@@ -23,7 +23,7 @@ let saveToNeonTimer: any = null;
       return pt.geometry.coordinates;
     }
 
-    export const GREEN_LAYOUT_VERSION = "v3_3panel_esri";
+    export const GREEN_LAYOUT_VERSION = "v4_clean_panels";
 
     // Fast MD5 implementation for cacheKey consistency with Python backend
     function md5(string: string): string {
@@ -4433,8 +4433,6 @@ let saveToNeonTimer: any = null;
         ctx.fillRect(0, 0, 540, 380);
       }
 
-      drawHazards(p1CX, p1CY, "#e5dacc", "#b0b0b0");
-
       // Clip inside green_polygon for Elevation Mesh
       ctx.save();
       ctx.beginPath();
@@ -4562,8 +4560,6 @@ let saveToNeonTimer: any = null;
         ctx.fillRect(0, 380, 540, 380);
       }
 
-      drawHazards(p2CX, p2CY, "#e5dacc", "#b0b0b0");
-
       // Clip inside green_polygon for Okabe-Ito Heatmap
       ctx.save();
       ctx.beginPath();
@@ -4640,27 +4636,6 @@ let saveToNeonTimer: any = null;
       ctx.strokeStyle = "#ffffff";
       ctx.lineWidth = 2.0;
       ctx.stroke();
-
-      // 10-Color Okabe-Ito Legend Bar at bottom of Panel 2
-      const okabeColors = ['#56B4E9', '#0072B2', '#009E73', '#52B788', '#2D6A4F', '#E69F00', '#D55E00', '#CC3333', '#990000', '#882255'];
-      const okabeLabels = ['0-1%', '1-2%', '2-3%', '3-4%', '4-5%', '5-6%', '6-7%', '7-8%', '8-9%', '9%+'];
-      const legCellW = 46;
-      const legStartX = (540 - 10 * legCellW) / 2;
-      const legY = 728;
-
-      okabeColors.forEach((col, idx) => {
-        const bx = legStartX + idx * legCellW;
-        ctx.fillStyle = col;
-        ctx.fillRect(bx, legY, legCellW, 10);
-        ctx.strokeStyle = "#1e293b";
-        ctx.lineWidth = 1;
-        ctx.strokeRect(bx, legY, legCellW, 10);
-
-        ctx.fillStyle = "#cbd5e1";
-        ctx.font = "8px 'JetBrains Mono', monospace";
-        ctx.textAlign = "center";
-        ctx.fillText(okabeLabels[idx], bx + legCellW / 2, legY + 20);
-      });
 
       // Panel 2 Title & Depth Badge
       ctx.fillStyle = "#ffffff";
@@ -4920,6 +4895,35 @@ let saveToNeonTimer: any = null;
       ctx.font = "bold 8px Inter, sans-serif";
       ctx.textBaseline = "top";
       ctx.fillText("YDS DEPTH", 500, 808);
+
+      // 10-Color Okabe-Ito Slope Heatmap Legend Bar at bottom of Panel 3 (above notes divider)
+      const okabeColors = ['#56B4E9', '#0072B2', '#009E73', '#52B788', '#2D6A4F', '#E69F00', '#D55E00', '#CC3333', '#990000', '#882255'];
+      const okabeLabels = ['0-1%', '1-2%', '2-3%', '3-4%', '4-5%', '5-6%', '6-7%', '7-8%', '8-9%', '9%+'];
+      const legCellW = 46;
+      const legStartX = (540 - 10 * legCellW) / 2;
+      const legY = 1222;
+
+      // Clean white card background above notes divider
+      ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+      ctx.fillRect(legStartX - 6, legY - 4, 10 * legCellW + 12, 34);
+      ctx.strokeStyle = "#cbd5e1";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(legStartX - 6, legY - 4, 10 * legCellW + 12, 34);
+
+      okabeColors.forEach((col, idx) => {
+        const bx = legStartX + idx * legCellW;
+        ctx.fillStyle = col;
+        ctx.fillRect(bx, legY, legCellW, 10);
+        ctx.strokeStyle = "#64748b";
+        ctx.lineWidth = 0.8;
+        ctx.strokeRect(bx, legY, legCellW, 10);
+
+        ctx.fillStyle = "#334155";
+        ctx.font = "bold 8px 'JetBrains Mono', monospace";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "alphabetic";
+        ctx.fillText(okabeLabels[idx], bx + legCellW / 2, legY + 22);
+      });
 
       // Below y = 1260: Divider, Notes, Metadata, and Badges
       ctx.strokeStyle = "#5c805c";

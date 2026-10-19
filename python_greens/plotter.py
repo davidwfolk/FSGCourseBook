@@ -337,18 +337,6 @@ class GreenPlotter:
         if sat_img:
             ax_p1.imshow(sat_img, extent=[all_minx, all_maxx, y_bottom_p12, y_top_p12], origin='upper', zorder=0)
 
-        # Hazards
-        for w in local_water_rot:
-            if not w.is_empty:
-                xw, yw = w.exterior.xy
-                ax_p1.fill(xw, yw, color='#a0c4ff', zorder=1)
-                ax_p1.plot(xw, yw, color='#4a80cc', linewidth=1.0, zorder=1)
-        for b in local_bunkers_rot:
-            if not b.is_empty:
-                xb, yb = b.exterior.xy
-                ax_p1.fill(xb, yb, color='#e5dacc', zorder=1)
-                ax_p1.plot(xb, yb, color='#b0b0b0', linewidth=0.8, zorder=1)
-
         # Elevation Mesh inside green (SOLID OPAQUE, smooth continuous gradient)
         if local_green_rot:
             gx, gy = local_green_rot.exterior.xy
@@ -413,17 +401,6 @@ class GreenPlotter:
         if sat_img:
             ax_p2.imshow(sat_img, extent=[all_minx, all_maxx, y_bottom_p12, y_top_p12], origin='upper', zorder=0)
 
-        for w in local_water_rot:
-            if not w.is_empty:
-                xw, yw = w.exterior.xy
-                ax_p2.fill(xw, yw, color='#a0c4ff', zorder=1)
-                ax_p2.plot(xw, yw, color='#4a80cc', linewidth=1.0, zorder=1)
-        for b in local_bunkers_rot:
-            if not b.is_empty:
-                xb, yb = b.exterior.xy
-                ax_p2.fill(xb, yb, color='#e5dacc', zorder=1)
-                ax_p2.plot(xb, yb, color='#b0b0b0', linewidth=0.8, zorder=1)
-
         # Okabe-Ito Heatmap inside green (SOLID OPAQUE, smooth StrackaLine contour bands)
         if local_green_rot:
             gx, gy = local_green_rot.exterior.xy
@@ -475,19 +452,6 @@ class GreenPlotter:
         ax_p2.add_patch(rect_badge)
         ax_p2.text(badge_x + badge_w / 2, badge_y + 1.1, f"DEPTH: {total_depth} YDS",
                    fontsize=7, fontweight='bold', color='white', ha='center', va='center', zorder=11)
-
-        # 10-Color Legend Bar at bottom of Panel 2 with dark backing for contrast against satellite
-        leg_bar_w = (all_maxx - all_minx - 4.0) / 10
-        leg_bar_y = y_bottom_p12 + 1.6
-        rect_leg_bg = patches.Rectangle((all_minx + 1.2, y_bottom_p12 + 0.3), all_maxx - all_minx - 2.4, 2.8,
-                                        facecolor='#0a1120', alpha=0.88, zorder=9)
-        ax_p2.add_patch(rect_leg_bg)
-        okabe_labels = ['0-1', '1-2', '2-3', '3-4', '4-5', '5-6', '6-7', '7-8', '8-9', '9+']
-        for i, (col, lbl) in enumerate(zip(okabe_colors, okabe_labels)):
-            bx = all_minx + 2.0 + i * leg_bar_w
-            rect_l = patches.Rectangle((bx, leg_bar_y), leg_bar_w, 1.3, facecolor=col, edgecolor='#1e293b', linewidth=0.5, zorder=10)
-            ax_p2.add_patch(rect_l)
-            ax_p2.text(bx + leg_bar_w / 2, leg_bar_y - 0.7, lbl, fontsize=5.5, fontweight='bold', color='#cbd5e1', ha='center', va='top', zorder=10)
 
         # Divider at bottom of Panel 2
         line_div2 = plt.Line2D((0, 1), (0.4974, 0.4974), transform=fig.transFigure, color='#5c805c', linewidth=2.0, zorder=30)
@@ -627,6 +591,19 @@ class GreenPlotter:
                    fontsize=20, fontweight='bold', color='#222222', ha='right', va='center', zorder=12)
         ax_p3.text(all_maxx - 2.5, y_top_p3 - 6.5, "YDS DEPTH",
                    fontsize=6, fontweight='bold', color='#666666', ha='right', va='center', zorder=12)
+
+        # 10-Color Slope Heatmap Legend Bar at bottom of Panel 3 (clean white backing above notes divider)
+        leg_bar_w = (all_maxx - all_minx - 4.0) / 10
+        leg_bar_y = y_bottom_p3 + 1.7
+        rect_leg_bg = patches.Rectangle((all_minx + 1.2, y_bottom_p3 + 0.1), all_maxx - all_minx - 2.4, 3.1,
+                                        facecolor='white', edgecolor='#cbd5e1', linewidth=0.8, alpha=0.95, zorder=15)
+        ax_p3.add_patch(rect_leg_bg)
+        okabe_labels = ['0-1', '1-2', '2-3', '3-4', '4-5', '5-6', '6-7', '7-8', '8-9', '9+']
+        for i, (col, lbl) in enumerate(zip(okabe_colors, okabe_labels)):
+            bx = all_minx + 2.0 + i * leg_bar_w
+            rect_l = patches.Rectangle((bx, leg_bar_y), leg_bar_w, 1.2, facecolor=col, edgecolor='#64748b', linewidth=0.5, zorder=16)
+            ax_p3.add_patch(rect_l)
+            ax_p3.text(bx + leg_bar_w / 2, leg_bar_y - 0.55, lbl, fontsize=5.5, fontweight='bold', color='#334155', ha='center', va='top', zorder=16)
 
         # ==============================================================
         # NOTES SECTION (Bottom: y = 0.0 to 0.1667, below y = 1260px)
