@@ -239,8 +239,8 @@ class GreenPlotter:
 
         # Elevation Mesh inside green
         if local_green_rot:
-            xg, yg = local_green_rot.exterior.xy
-            clip_patch_p1 = PathPatch(Path(np.column_stack([xg, yg])), transform=ax_p1.transData, facecolor='none', edgecolor='none')
+            gx, gy = local_green_rot.exterior.xy
+            clip_patch_p1 = PathPatch(Path(np.column_stack([gx, gy])), transform=ax_p1.transData, facecolor='none')
             ax_p1.add_patch(clip_patch_p1)
 
             try:
@@ -258,7 +258,7 @@ class GreenPlotter:
                 ax_p1.plot(xf, yf, color='#777777', linestyle=(0, (4, 4)), linewidth=0.9, zorder=17)
 
             # Smooth green perimeter outline
-            ax_p1.plot(xg, yg, color='#3a8c54', linewidth=2.0, zorder=18)
+            ax_p1.plot(gx, gy, color='#3a8c54', linewidth=2.0, zorder=18)
 
         # Dark navy downhill fall-line arrows
         if len(pg_x) > 0:
@@ -308,14 +308,13 @@ class GreenPlotter:
 
         # Okabe-Ito Heatmap inside green
         if local_green_rot:
-            xg, yg = local_green_rot.exterior.xy
-            clip_patch_p2 = PathPatch(Path(np.column_stack([xg, yg])), transform=ax_p2.transData, facecolor='none', edgecolor='none')
+            gx, gy = local_green_rot.exterior.xy
+            clip_patch_p2 = PathPatch(Path(np.column_stack([gx, gy])), transform=ax_p2.transData, facecolor='none')
             ax_p2.add_patch(clip_patch_p2)
 
             try:
-                cf_p2 = ax_p2.contourf(X_rot, Y_rot, slope_pct, levels=okabe_bounds, cmap=okabe_cmap, norm=okabe_norm, extend='max', alpha=0.88, zorder=2)
-                for c in cf_p2.collections:
-                    c.set_clip_path(clip_patch_p2)
+                im_p2 = ax_p2.pcolormesh(X_rot, Y_rot, slope_pct, shading='gouraud', cmap=okabe_cmap, norm=okabe_norm, alpha=0.92, zorder=2)
+                im_p2.set_clip_path(clip_patch_p2)
 
                 cs_p2 = ax_p2.contour(X_rot, Y_rot, Z_feet, levels=levels, colors='white', linewidths=0.8, alpha=0.85, zorder=3)
                 for c in cs_p2.collections:
@@ -328,7 +327,7 @@ class GreenPlotter:
                 ax_p2.plot(xf, yf, color='#777777', linestyle=(0, (4, 4)), linewidth=0.9, zorder=17)
 
             # Smooth green perimeter outline
-            ax_p2.plot(xg, yg, color='#3a8c54', linewidth=2.0, zorder=18)
+            ax_p2.plot(gx, gy, color='#3a8c54', linewidth=2.0, zorder=18)
 
         # Bold white break arrows inside green (alpha = 1.0)
         if len(pg_x) > 0:

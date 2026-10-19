@@ -6,6 +6,7 @@ import hashlib
 import math
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from shapely.geometry import Polygon, Point, LineString
@@ -54,10 +55,16 @@ async def render_green(req: RenderGreenRequest):
         h_num = req.hole_number
         app_deg = round(req.approach_bearing)
 
-        # Include GREEN_LAYOUT_VERSION and full coordinate string in MD5 cache_token
-        coord_str = ";".join([f"{c[0]:.6f},{c[1]:.6f}" for c in (req.green_polygon or [])])
-        coord_hash = hashlib.md5(coord_str.encode("utf-8")).hexdigest()[:10]
-        cache_key = f"{c_id}_{h_num}_{GREEN_LAYOUT_VERSION}_{app_deg}_{coord_hash}"
+        # Coordinate hash matching exact JS stringify + bitwise loop
+        coord_str = json.dumps(req.green_polygon or [], separators=(',', ':'))
+        coord_hash = 0
+        for char in coord_str:
+            coord_hash = ((coord_hash << 5) - coord_hash) + ord(char)
+            coord_hash = (coord_hash & 0xFFFFFFFF)
+            if coord_hash >= 0x80000000:
+                coord_hash -= 0x100000000
+        token_str = str(abs(coord_hash))
+        cache_key = f"{c_id}_{h_num}_{GREEN_LAYOUT_VERSION}_{app_deg}_{token_str}"
         cache_token = cache_key
 
         png_cache_path = os.path.join(CACHE_DIR, f"hole_{cache_token}.png")
@@ -91,69 +98,94 @@ async def render_green(req: RenderGreenRequest):
             except Exception as e:
                 print("Cache read error:", e)
 
-        # Build Shapely geometries
-        green_poly = None
-        if req.green_polygon and len(req.green_polygon) >= 3:
-            coords = [tuple(pt) for pt in req.green_polygon]
-            if coords[0] != coords[-1]:
-                coords.append(coords[0])
-            green_poly = Polygon(coords)
-        elif req.green_coord and len(req.green_coord) == 2:
-            # Fallback circle ~25m radius if only center coordinate provided
-            green_poly = Point(req.green_coord[0], req.green_coord[1]).buffer(0.00025)
-        else:
-            raise HTTPException(status_code=400, detail="Missing valid green_polygon or green_coord")
+        # Build Shapely geometries and fetch DEM with bad geometry crash protection
+        try:
+            green_poly = None
+            if req.green_polygon and len(req.green_polygon) >= 3:
+                coords = [tuple(pt) for pt in req.green_polygon]
+                if coords[0] != coords[-1]:
+                    coords.append(coords[0])
+                green_poly = Polygon(coords)
+                if not green_poly.is_valid:
+                    try:
+                        fixed = shapely.make_valid(green_poly)
+                        if fixed.geom_type == 'Polygon' and not fixed.is_empty:
+                            green_poly = fixed
+                        elif fixed.geom_type == 'MultiPolygon' and not fixed.is_empty:
+                            green_poly = max(fixed.geoms, key=lambda g: g.area)
+                    except Exception:
+                        pass
+                if not green_poly.is_valid or green_poly.is_empty:
+                    raise ValueError("Polygon is self-intersecting or invalid")
+            elif req.green_coord and len(req.green_coord) == 2:
+                # Fallback circle ~25m radius if only center coordinate provided
+                green_poly = Point(req.green_coord[0], req.green_coord[1]).buffer(0.00025)
+            else:
+                raise ValueError("Missing valid green_polygon or green_coord")
 
-        bunker_polys = []
-        for b in req.bunkers:
-            if b and len(b) >= 3:
-                b_coords = [tuple(pt) for pt in b]
-                if b_coords[0] != b_coords[-1]:
-                    b_coords.append(b_coords[0])
-                try:
-                    bp = Polygon(b_coords)
-                    if bp.is_valid and not bp.is_empty:
-                        bunker_polys.append(bp)
-                except:
-                    pass
+            bunker_polys = []
+            for b in req.bunkers:
+                if b and len(b) >= 3:
+                    b_coords = [tuple(pt) for pt in b]
+                    if b_coords[0] != b_coords[-1]:
+                        b_coords.append(b_coords[0])
+                    try:
+                        bp = Polygon(b_coords)
+                        if not bp.is_valid:
+                            bp = shapely.make_valid(bp)
+                        if bp.geom_type == 'MultiPolygon' and not bp.is_empty:
+                            bp = max(bp.geoms, key=lambda g: g.area)
+                        if bp.is_valid and not bp.is_empty and bp.geom_type == 'Polygon':
+                            bunker_polys.append(bp)
+                    except:
+                        pass
 
-        water_polys = []
-        for w in req.water:
-            if w and len(w) >= 3:
-                w_coords = [tuple(pt) for pt in w]
-                if w_coords[0] != w_coords[-1]:
-                    w_coords.append(w_coords[0])
-                try:
-                    wp = Polygon(w_coords)
-                    if wp.is_valid and not wp.is_empty:
-                        water_polys.append(wp)
-                except:
-                    pass
+            water_polys = []
+            for w in req.water:
+                if w and len(w) >= 3:
+                    w_coords = [tuple(pt) for pt in w]
+                    if w_coords[0] != w_coords[-1]:
+                        w_coords.append(w_coords[0])
+                    try:
+                        wp = Polygon(w_coords)
+                        if not wp.is_valid:
+                            wp = shapely.make_valid(wp)
+                        if wp.geom_type == 'MultiPolygon' and not wp.is_empty:
+                            wp = max(wp.geoms, key=lambda g: g.area)
+                        if wp.is_valid and not wp.is_empty and wp.geom_type == 'Polygon':
+                            water_polys.append(wp)
+                    except:
+                        pass
 
-        # Create approach line (from actual pivot/tee or along approach bearing)
-        g_center = green_poly.centroid
-        if req.pivot_coord and len(req.pivot_coord) == 2:
-            hole_line = LineString([Point(req.pivot_coord[0], req.pivot_coord[1]), g_center])
-        elif req.tee_coord and len(req.tee_coord) == 2 and req.par == 3:
-            hole_line = LineString([Point(req.tee_coord[0], req.tee_coord[1]), g_center])
-        else:
-            back_rad = math.radians((req.approach_bearing + 180) % 360)
-            d_lat = (120.0 / 111320.0) * math.cos(back_rad)
-            d_lon = (120.0 / (111320.0 * math.cos(math.radians(g_center.y)))) * math.sin(back_rad)
-            hole_line = LineString([Point(g_center.x + d_lon, g_center.y + d_lat), g_center])
+            # Create approach line (from actual pivot/tee or along approach bearing)
+            g_center = green_poly.centroid
+            if req.pivot_coord and len(req.pivot_coord) == 2:
+                hole_line = LineString([Point(req.pivot_coord[0], req.pivot_coord[1]), g_center])
+            elif req.tee_coord and len(req.tee_coord) == 2 and req.par == 3:
+                hole_line = LineString([Point(req.tee_coord[0], req.tee_coord[1]), g_center])
+            else:
+                back_rad = math.radians((req.approach_bearing + 180) % 360)
+                d_lat = (120.0 / 111320.0) * math.cos(back_rad)
+                d_lon = (120.0 / (111320.0 * math.cos(math.radians(g_center.y)))) * math.sin(back_rad)
+                hole_line = LineString([Point(g_center.x + d_lon, g_center.y + d_lat), g_center])
 
-        geom_dict = {
-            'green': green_poly,
-            'bunkers': bunker_polys,
-            'water': water_polys,
-            'hole_line': hole_line,
-            'fairways': [],
-            'rough': []
-        }
+            geom_dict = {
+                'green': green_poly,
+                'bunkers': bunker_polys,
+                'water': water_polys,
+                'hole_line': hole_line,
+                'fairways': [],
+                'rough': []
+            }
 
-        # Process real USGS 3DEP 1m elevation
-        processor = DEMProcessor(use_synthetic=False)
-        dem_data = processor.get_elevation_data(geom_dict)
+            # Process real USGS 3DEP 1m elevation
+            processor = DEMProcessor(use_synthetic=False)
+            dem_data = processor.get_elevation_data(geom_dict)
+        except Exception as e:
+            return JSONResponse(
+                status_code=400,
+                content={"detail": f"Geometry Error: {str(e)}. Ensure the green polygon is not self-intersecting."}
+            )
         
         slope_pct, aspect_rad, down_gx, down_gy = processor.compute_slope_and_aspect(
             dem_data['elevation_feet'],

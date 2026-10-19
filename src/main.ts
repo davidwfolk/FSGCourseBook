@@ -175,10 +175,16 @@ let saveToNeonTimer: any = null;
       return (wordToHex(a) + wordToHex(b) + wordToHex(c) + wordToHex(d)).toLowerCase();
     }
 
-    function computeCoordHash(coords: number[][]): string {
-      if (!coords || !Array.isArray(coords) || coords.length === 0) return "none";
-      const coordStr = coords.map((c: number[]) => `${c[0].toFixed(6)},${c[1].toFixed(6)}`).join(';');
-      return md5(coordStr).substring(0, 10);
+    function computeCoordHash(coords: any): string {
+      if (!coords) return "0";
+      const coordsArray = coords.geometry?.coordinates || (Array.isArray(coords) ? coords : []);
+      const coordStr = JSON.stringify(coordsArray);
+      let coordHash = 0;
+      for (let i = 0; i < coordStr.length; i++) {
+        coordHash = ((coordHash << 5) - coordHash) + coordStr.charCodeAt(i);
+        coordHash |= 0;
+      }
+      return Math.abs(coordHash).toString();
     }
 
     // Chaikin corner-cutting polygon smoothing
@@ -3822,6 +3828,7 @@ let saveToNeonTimer: any = null;
     const greenImageCache = new Map<string, HTMLImageElement>();
     const pendingGreenRenderTokens = new Set<string>();
     let forceRefreshGreen = false;
+    let lastGeometryAlertKey = "";
 
     function invalidateGreenCache(holeNumber?: number | string) {
       if (holeNumber) {
@@ -3849,9 +3856,8 @@ let saveToNeonTimer: any = null;
       const appDeg = Math.round(model.approachBearingDeg || 0);
       const coordHash = computeCoordHash(greenFeat.coords);
       const cacheKey = `${cId}_${holeNum}_${GREEN_LAYOUT_VERSION}_${appDeg}_${coordHash}`;
-      const token = `${cacheKey}${force ? '_f' + Date.now() : ''}`;
-      if (pendingGreenRenderTokens.has(token)) return;
-      pendingGreenRenderTokens.add(token);
+      if (pendingGreenRenderTokens.has(cacheKey)) return;
+      pendingGreenRenderTokens.add(cacheKey);
 
       const bunkers = holeData.features
         .filter((f: any) => f.type === "bunker" && Array.isArray(f.coords) && f.coords.length >= 3)
@@ -3880,6 +3886,17 @@ let saveToNeonTimer: any = null;
             force_refresh: force
           })
         });
+
+        if (res.status === 400) {
+          const errData = await res.json().catch(() => ({}));
+          const detail = errData.detail || "Geometry Error: Ensure the green polygon is not self-intersecting.";
+          console.error("Geometry Error from /api/render-green:", detail);
+          if (lastGeometryAlertKey !== cacheKey) {
+            lastGeometryAlertKey = cacheKey;
+            alert(detail);
+          }
+          return;
+        }
 
         if (!res.ok) throw new Error(`Python render HTTP ${res.status}`);
         const payload = await res.json();
@@ -3912,7 +3929,7 @@ let saveToNeonTimer: any = null;
       } catch (err) {
         console.warn("Python render-green unavailable, using canvas fallback:", err);
       } finally {
-        pendingGreenRenderTokens.delete(token);
+        pendingGreenRenderTokens.delete(cacheKey);
       }
     }
 
@@ -3954,7 +3971,7 @@ let saveToNeonTimer: any = null;
 
       // If layout_version is missing/mismatched or cache_key differs, ignore stale image and trigger Python engine
       if (!isCacheValid || forceRefreshGreen) {
-        triggerPythonGreenRender(model, !isCacheValid || forceRefreshGreen);
+        triggerPythonGreenRender(model, forceRefreshGreen);
       }
 
       const holePar = parseInt((document.getElementById("meta-hole-par") as HTMLInputElement)?.value || "4", 10) || 4;

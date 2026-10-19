@@ -10,23 +10,25 @@ export const sql = (async (strings: TemplateStringsArray | string, ...params: an
     throw new Error('DATABASE_URL is not set in environment variables');
   }
 
-  const client = neon(url);
-  try {
-    return await (client as any)(strings, ...params);
-  } catch (err: any) {
-    const errMsg = String(err?.message || '');
-    const isNetworkErr =
-      errMsg.includes('fetch failed') ||
-      errMsg.includes('NGHTTP2') ||
-      errMsg.includes('ECONNRESET') ||
-      err?.sourceError?.code === 'ERR_HTTP2_STREAM_ERROR';
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const client = neon(url);
+      return await (client as any)(strings, ...params);
+    } catch (err: any) {
+      const errMsg = String(err?.message || '');
+      const isNetworkErr =
+        errMsg.includes('fetch failed') ||
+        errMsg.includes('NGHTTP2') ||
+        errMsg.includes('ECONNRESET') ||
+        errMsg.includes('ETIMEDOUT') ||
+        err?.sourceError?.code === 'ERR_HTTP2_STREAM_ERROR';
 
-    if (isNetworkErr) {
-      console.warn('Neon connection retry after network error:', errMsg);
-      await new Promise((r) => setTimeout(r, 250));
-      const retryClient = neon(url);
-      return await (retryClient as any)(strings, ...params);
+      if (isNetworkErr && attempt < 3) {
+        console.warn(`Neon connection retry (attempt ${attempt}/3) after network error:`, errMsg);
+        await new Promise((r) => setTimeout(r, attempt * 500));
+        continue;
+      }
+      throw err;
     }
-    throw err;
   }
 }) as any;
