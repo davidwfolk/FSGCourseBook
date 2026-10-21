@@ -3571,19 +3571,6 @@ let saveToNeonTimer: any = null;
 
       // 7. Distance Arcs (100y, 150y, 200y, 250y) - Complete, unbroken circles stretching edge-to-edge
       if (showArcs) {
-        // Forward vector along the hole from Tee to Green
-        const dxHole = gPin.x - teePt.x;
-        const dyHole = gPin.y - teePt.y;
-        const distHolePx = Math.hypot(dxHole, dyHole) || 1;
-        const ux = dxHole / distHolePx;
-        const uy = dyHole / distHolePx;
-        // Right normal vector pointing to player's right looking towards green: (x, y) -> (-y, x)
-        const nx = -uy;
-        const ny = ux;
-
-        const lateralTargetYards = 26.0;
-        const lateralPxTarget = lateralTargetYards * pxPerYard;
-
         const greenArcConfigs = [
           { dist: 100, color: "#facc15", label: "100" },
           { dist: 150, color: "#f87171", label: "150" },
@@ -3602,32 +3589,32 @@ let saveToNeonTimer: any = null;
           ctx.lineWidth = 1.8;
           ctx.stroke();
 
-          // Distance callout badge placed on RIGHT side of fairway corridor (distance to green)
-          const latPx = Math.max(30, Math.min(lateralPxTarget, rPx * 0.75));
-          const sinT = latPx / rPx;
-          const cosT = Math.sqrt(Math.max(0, 1.0 - sinT * sinT));
+          // Distance callout badge placed on RIGHT side of page (distance to green)
+          const targetX = canvas.width - 42;
+          const maxReachX = gPin.x + rPx * 0.94;
+          let lx = Math.min(targetX, maxReachX);
+          const dx = lx - gPin.x;
+          let dy = Math.sqrt(Math.max(0, rPx * rPx - dx * dx));
+          let ly = gPin.y + dy;
 
-          // P = gPin + rPx * (cosT * (-u) + sinT * n)
-          let lx = gPin.x + rPx * (-cosT * ux + sinT * nx);
-          let ly = gPin.y + rPx * (-cosT * uy + sinT * ny);
-
-          // Paper bounds clamping (keeping badge safely on the canvas while staying on the arc)
-          const maxPaperX = canvas.width - 26;
-          const minPaperX = 26;
-          if (lx > maxPaperX) {
-            lx = maxPaperX;
-            const diffX = lx - gPin.x;
-            if (rPx >= Math.abs(diffX)) {
-              ly = gPin.y + Math.sqrt(rPx * rPx - diffX * diffX);
+          // Safe paper bounds clamping while strictly staying on the circle
+          const minY = 65;
+          const maxY = canvas.height - 45;
+          if (ly < minY) {
+            ly = minY;
+            const dY = Math.abs(ly - gPin.y);
+            if (rPx >= dY) {
+              lx = gPin.x + Math.sqrt(rPx * rPx - dY * dY);
             }
-          } else if (lx < minPaperX) {
-            lx = minPaperX;
-            const diffX = lx - gPin.x;
-            if (rPx >= Math.abs(diffX)) {
-              ly = gPin.y + Math.sqrt(rPx * rPx - diffX * diffX);
+          } else if (ly > maxY) {
+            ly = maxY;
+            const dY = Math.abs(ly - gPin.y);
+            if (rPx >= dY) {
+              lx = gPin.x + Math.sqrt(rPx * rPx - dY * dY);
             }
           }
-          ly = Math.max(65, Math.min(canvas.height - 45, ly));
+          lx = Math.max(26, Math.min(canvas.width - 26, lx));
+          ly = Math.max(minY, Math.min(maxY, ly));
 
           ctx.fillStyle = "rgba(15, 23, 42, 0.88)";
           ctx.beginPath();
@@ -3664,32 +3651,32 @@ let saveToNeonTimer: any = null;
             ctx.stroke();
             ctx.setLineDash([]);
 
-            // Distance callout badge placed on LEFT side of fairway corridor (distance from tee)
-            const latPx = Math.max(30, Math.min(lateralPxTarget, rPx * 0.75));
-            const sinT = latPx / rPx;
-            const cosT = Math.sqrt(Math.max(0, 1.0 - sinT * sinT));
+            // Distance callout badge placed on LEFT side of page (distance from tee)
+            const targetX = 42;
+            const minReachX = teePt.x - rPx * 0.94;
+            let bx = Math.max(targetX, minReachX);
+            const dx = bx - teePt.x;
+            let dy = Math.sqrt(Math.max(0, rPx * rPx - dx * dx));
+            let by = teePt.y - dy;
 
-            // P = teePt + rPx * (cosT * u - sinT * n)
-            let bx = teePt.x + rPx * (cosT * ux - sinT * nx);
-            let by = teePt.y + rPx * (cosT * uy - sinT * ny);
-
-            // Paper bounds clamping (keeping badge safely on the canvas while staying on the arc)
-            const minPaperX = 26;
-            const maxPaperX = canvas.width - 26;
-            if (bx < minPaperX) {
-              bx = minPaperX;
-              const diffX = bx - teePt.x;
-              if (rPx >= Math.abs(diffX)) {
-                by = teePt.y - Math.sqrt(rPx * rPx - diffX * diffX);
+            // Safe paper bounds clamping while strictly staying on the circle
+            const minY = 65;
+            const maxY = canvas.height - 45;
+            if (by < minY) {
+              by = minY;
+              const dY = Math.abs(by - teePt.y);
+              if (rPx >= dY) {
+                bx = teePt.x - Math.sqrt(rPx * rPx - dY * dY);
               }
-            } else if (bx > maxPaperX) {
-              bx = maxPaperX;
-              const diffX = bx - teePt.x;
-              if (rPx >= Math.abs(diffX)) {
-                by = teePt.y - Math.sqrt(rPx * rPx - diffX * diffX);
+            } else if (by > maxY) {
+              by = maxY;
+              const dY = Math.abs(by - teePt.y);
+              if (rPx >= dY) {
+                bx = teePt.x - Math.sqrt(rPx * rPx - dY * dY);
               }
             }
-            by = Math.max(65, Math.min(canvas.height - 45, by));
+            bx = Math.max(26, Math.min(canvas.width - 26, bx));
+            by = Math.max(minY, Math.min(maxY, by));
 
             ctx.fillStyle = "rgba(15, 23, 42, 0.88)";
             ctx.beginPath();
