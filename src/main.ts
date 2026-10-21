@@ -3592,7 +3592,7 @@ let saveToNeonTimer: any = null;
 
           // Distance callout badges placed along fairway corridor
           const angleToTee = Math.atan2(teePt.y - gPin.y, teePt.x - gPin.x);
-          [-0.38, 0.38].forEach((offset) => {
+          [-0.38].forEach((offset) => {
             const ang = angleToTee + offset;
             const lx = gPin.x + rPx * Math.cos(ang);
             const ly = gPin.y + rPx * Math.sin(ang);
@@ -3635,7 +3635,7 @@ let saveToNeonTimer: any = null;
             ctx.setLineDash([]);
 
             const angleToGreen = Math.atan2(gPin.y - teePt.y, gPin.x - teePt.x);
-            [-0.35, 0.35].forEach((offset) => {
+            [-0.35].forEach((offset) => {
               const ang = angleToGreen + offset;
               const bx = teePt.x + rPx * Math.cos(ang);
               const by = teePt.y + rPx * Math.sin(ang);
