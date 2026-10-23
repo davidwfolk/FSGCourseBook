@@ -1209,7 +1209,7 @@ let saveToNeonTimer: any = null;
       return added;
     }
 
-    document.getElementById("auto-targets-btn").addEventListener("click", () => {
+    document.getElementById("auto-targets-btn")?.addEventListener("click", () => {
       const added = autoPopulateFairwayDots(true);
       showToast(`Auto-placed ${added} fairway yardage markers! Drag any dot on the map or SVG book to adjust.`);
     });
@@ -2409,7 +2409,7 @@ let saveToNeonTimer: any = null;
           showToast("USGS 3DEP API busy — using synthetic model.");
         }
       } finally {
-        if (btnText) btnText.textContent = "Fetch LiDAR";
+        if (btnText) btnText.textContent = "Refresh Green";
       }
     }
     document.getElementById("lidar-fetch-btn")?.addEventListener("click", () => {
@@ -5890,7 +5890,7 @@ let saveToNeonTimer: any = null;
       showToast("Browser cache cleared & reset to Preset 1.");
     });
 
-    document.getElementById("export-svg-btn").addEventListener("click", () => {
+    document.getElementById("export-svg-btn")?.addEventListener("click", () => {
       const svgEl = document.getElementById("yardage-book-svg");
       const serializer = new XMLSerializer();
       let source = serializer.serializeToString(svgEl);
@@ -5910,9 +5910,32 @@ let saveToNeonTimer: any = null;
       showToast("Downloaded Print-Ready Vector SVG!");
     });
 
-    document.getElementById("print-book-btn").addEventListener("click", () => {
+    document.getElementById("print-book-btn")?.addEventListener("click", () => {
       window.print();
     });
+
+    // Tools & Actions Dropdown Menu Handler
+    const navToolsBtn = document.getElementById("nav-tools-menu-btn");
+    const navToolsDropdown = document.getElementById("nav-tools-dropdown");
+    const navToolsWrapper = document.getElementById("nav-tools-menu-wrapper");
+
+    if (navToolsBtn && navToolsDropdown) {
+      navToolsBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        navToolsDropdown.classList.toggle("hidden");
+        if (typeof lucide !== "undefined") lucide.createIcons();
+      });
+
+      navToolsDropdown.addEventListener("click", () => {
+        navToolsDropdown.classList.add("hidden");
+      });
+
+      document.addEventListener("click", (e) => {
+        if (navToolsWrapper && !navToolsWrapper.contains(e.target as Node)) {
+          navToolsDropdown.classList.add("hidden");
+        }
+      });
+    }
 
     function holeToGeoJSON() {
       return {
@@ -6042,14 +6065,8 @@ let saveToNeonTimer: any = null;
     let fallbackTeePt = null;
 
     function initFallbackMapHole() {
-      const refBtn = document.getElementById("resync-osm-btn") || document.getElementById("auto-targets-btn");
-      const parent = refBtn?.parentNode;
-      if (parent && !document.getElementById("fallback-map-hole-btn")) {
-        const btn = document.createElement("button");
-        btn.id = "fallback-map-hole-btn";
-        btn.className = "bg-amber-600 hover:bg-amber-500 text-white text-xs font-medium px-2.5 py-2 rounded-lg flex items-center gap-1 shadow-sm transition shrink-0";
-        btn.title = "Click-to-assign Hole: Click [1] Tee then [2] Green on the satellite map";
-        btn.innerHTML = '<i data-lucide="crosshair" class="w-3.5 h-3.5"></i><span class="hidden md:inline">Map Hole</span>';
+      const btn = document.getElementById("fallback-map-hole-btn");
+      if (btn) {
         btn.addEventListener("click", () => {
           fallbackMapHoleActive = true;
           fallbackTeePt = null;
@@ -6057,8 +6074,6 @@ let saveToNeonTimer: any = null;
           setStatus("Click [1] TEE on the satellite map, then [2] GREEN.");
           showToast("Click Tee location on the map");
         });
-        parent.insertBefore(btn, refBtn);
-        if (typeof lucide !== 'undefined') lucide.createIcons();
       }
     }
 

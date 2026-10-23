@@ -89,28 +89,62 @@
     }
 
     @media print {
+      @page {
+        size: portrait;
+        margin: 8mm;
+      }
+
+      body {
+        background: white !important;
+        overflow: visible !important;
+        height: auto !important;
+      }
+
       body * {
         visibility: hidden;
       }
 
-      #svg-print-container,
-      #svg-print-container * {
+      #spreads-container,
+      #spreads-container * {
         visibility: visible;
       }
 
-      #svg-print-container {
-        position: fixed;
-        left: 0;
-        top: 0;
-        width: 100vw;
-        height: 100vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: white !important;
+      #spreads-container {
+        position: absolute !important;
+        left: 0 !important;
+        top: 0 !important;
+        width: 100% !important;
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
         padding: 0 !important;
         margin: 0 !important;
+        background: white !important;
+        overflow: visible !important;
+      }
+
+      /* Hide UI text headers above spreads during printing */
+      #spreads-container > div > div:first-child {
+        display: none !important;
+      }
+
+      #spread1-wrapper,
+      #spread2-wrapper {
+        border: none !important;
         box-shadow: none !important;
+        margin: 0 auto 20px auto !important;
+        background: transparent !important;
+        page-break-after: always !important;
+        break-after: page !important;
+      }
+
+      #hole-spread-canvas,
+      #green-spread-canvas {
+        max-width: 440px !important;
+        width: 100% !important;
+        height: auto !important;
+        display: block !important;
+        margin: 0 auto !important;
       }
     }
   </style>
@@ -140,15 +174,15 @@
       </div>
     </div>
 
-    <!-- Course Search, 18-Hole Switcher, Presets & Importers -->
-    <div class="flex items-center gap-1.5 flex-1 max-w-5xl mx-1">
-      <div id="course-search-wrapper" class="relative flex-1 min-w-[180px]">
+    <!-- Course Search, Saved Courses & 18-Hole Switcher -->
+    <div class="flex items-center gap-2 flex-1 mx-2 min-w-0">
+      <div id="course-search-wrapper" class="relative flex-1 min-w-[200px]">
         <input id="course-search-input" type="text" autocomplete="off"
           placeholder="Search course name or 5-digit zip (e.g. 83642, Lakeview, BanBury)..."
           class="w-full bg-slate-800/90 border border-slate-700 text-xs text-slate-100 rounded-lg pl-8 pr-20 py-2 focus:outline-none focus:border-emerald-500 transition" />
         <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5"></i>
         <button id="course-search-btn"
-          class="absolute right-1.5 top-1 bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-semibold px-2.5 py-1 rounded-md transition">
+          class="absolute right-1.5 top-1 bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-semibold px-2.5 py-1 rounded-md transition cursor-pointer">
           Find Course
         </button>
 
@@ -160,7 +194,7 @@
 
       <!-- Saved Courses in Neon Dropdown -->
       <select id="saved-courses-select" title="Saved Courses in Neon Postgres"
-        class="bg-slate-800 border border-emerald-500/40 text-xs text-emerald-300 font-semibold rounded-lg px-2.5 py-2 focus:outline-none focus:border-emerald-400 cursor-pointer shrink-0 max-w-[190px] truncate">
+        class="bg-slate-800 border border-emerald-500/40 text-xs text-emerald-300 font-semibold rounded-lg px-2.5 py-2 focus:outline-none focus:border-emerald-400 cursor-pointer shrink-0 max-w-[220px] truncate">
         <option value="">Saved Courses (Neon)...</option>
       </select>
 
@@ -186,59 +220,94 @@
         <option value="17">Hole 17</option>
         <option value="18">Hole 18</option>
       </select>
-
-      <!-- Re-Sync OSM Button (Soft Merge) -->
-      <button id="resync-osm-btn" title="Re-Sync course vectors & fairways/bunkers from OpenStreetMap (preserves manual Tee & Green adjustments)"
-        class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium px-2.5 py-2 rounded-lg flex items-center gap-1 shadow-sm transition shrink-0">
-        <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
-        <span class="hidden md:inline">Re-Sync OSM</span>
-      </button>
-
-      <!-- Hard Reset OSM Button (Full Wipe & Fresh Match) -->
-      <button id="hard-reset-osm-btn" title="Hard reset course vectors & all 18 holes from OpenStreetMap (wipes all manual adjustments)"
-        class="bg-rose-700 hover:bg-rose-600 text-white text-xs font-medium px-2.5 py-2 rounded-lg flex items-center gap-1 shadow-sm transition shrink-0">
-        <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
-        <span class="hidden md:inline">Hard Reset OSM</span>
-      </button>
-
-      <!-- Auto-Populate Fairway Yardage Dots -->
-      <button id="auto-targets-btn"
-        title="Automatically place 100 / 125 / 150 / 175 / 200yd Aim Crosses & Sprinklers along the fairway centerline"
-        class="bg-violet-600 hover:bg-violet-500 text-white text-xs font-medium px-2.5 py-2 rounded-lg flex items-center gap-1 shadow-sm transition shrink-0">
-        <i data-lucide="crosshair" class="w-3.5 h-3.5"></i>
-        <span class="hidden lg:inline">+25y Dots</span>
-      </button>
-
-      <!-- Real USGS 3DEP Dense LiDAR Scanner -->
-      <button id="lidar-fetch-btn" title="Query high-density USGS 3DEP 1-Meter LiDAR grid across the green & targets"
-        class="bg-sky-600 hover:bg-sky-500 text-white text-xs font-medium px-2.5 py-2 rounded-lg flex items-center gap-1 shadow-sm transition shrink-0">
-        <i data-lucide="mountain-snow" class="w-3.5 h-3.5"></i>
-        <span id="lidar-btn-text" class="hidden md:inline">Fetch LiDAR</span>
-      </button>
     </div>
 
-    <!-- Save / Export Actions -->
-    <div class="flex items-center gap-1.5 shrink-0">
-      <button id="save-project-btn" title="Download entire 18-hole Course Project (.json) to disk"
-        class="bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700 text-xs font-medium px-2.5 py-1.5 rounded-lg flex items-center gap-1 transition">
-        <i data-lucide="save" class="w-3.5 h-3.5"></i>
-        <span class="hidden xl:inline">Save 18</span>
+    <!-- Right: Dropdown Menu for Tools & Actions -->
+    <div class="relative shrink-0" id="nav-tools-menu-wrapper">
+      <button id="nav-tools-menu-btn" type="button" title="Course Tools & Actions"
+        class="bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 hover:border-slate-600 text-xs font-semibold px-3 py-2 rounded-lg flex items-center gap-2 shadow-sm transition cursor-pointer">
+        <i data-lucide="menu" class="w-4 h-4 text-emerald-400"></i>
+        <span>Actions</span>
+        <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-slate-400 transition-transform"></i>
       </button>
-      <button id="geojson-modal-btn" title="Import / Export GeoJSON or Load Course Project"
-        class="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium px-2.5 py-1.5 rounded-lg flex items-center gap-1 transition">
-        <i data-lucide="code-2" class="w-3.5 h-3.5 text-emerald-400"></i>
-        <span class="hidden lg:inline">Data</span>
-      </button>
-      <button id="export-svg-btn"
-        class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-2.5 py-1.5 rounded-lg flex items-center gap-1 shadow-sm transition">
-        <i data-lucide="download" class="w-3.5 h-3.5"></i>
-        <span class="hidden sm:inline">SVG</span>
-      </button>
-      <button id="print-book-btn"
-        class="bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-semibold px-2.5 py-1.5 rounded-lg flex items-center gap-1 shadow-sm transition">
-        <i data-lucide="printer" class="w-3.5 h-3.5"></i>
-        <span class="hidden sm:inline">Print</span>
-      </button>
+
+      <!-- Dropdown Menu -->
+      <div id="nav-tools-dropdown"
+        class="hidden absolute right-0 top-full mt-1.5 w-60 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-[1000] py-1 divide-y divide-slate-800">
+        
+        <!-- Group 1: Mapping & Geometry -->
+        <div class="py-1">
+          <button id="fallback-map-hole-btn" type="button"
+            class="w-full text-left px-3.5 py-2 text-xs font-medium text-amber-300 hover:bg-slate-800 flex items-center gap-2.5 transition cursor-pointer">
+            <i data-lucide="crosshair" class="w-4 h-4 text-amber-400 shrink-0"></i>
+            <div>
+              <div class="font-semibold text-slate-100">Map Hole</div>
+              <div class="text-[10px] text-slate-400">Click Tee then Green on map</div>
+            </div>
+          </button>
+
+          <button id="resync-osm-btn" type="button"
+            class="w-full text-left px-3.5 py-2 text-xs font-medium text-indigo-300 hover:bg-slate-800 flex items-center gap-2.5 transition cursor-pointer">
+            <i data-lucide="refresh-cw" class="w-4 h-4 text-indigo-400 shrink-0"></i>
+            <div>
+              <div class="font-semibold text-slate-100">Re-Sync OSM</div>
+              <div class="text-[10px] text-slate-400">Soft merge OSM shapes</div>
+            </div>
+          </button>
+
+          <button id="hard-reset-osm-btn" type="button"
+            class="w-full text-left px-3.5 py-2 text-xs font-medium text-rose-300 hover:bg-rose-950/40 flex items-center gap-2.5 transition cursor-pointer">
+            <i data-lucide="rotate-ccw" class="w-4 h-4 text-rose-400 shrink-0"></i>
+            <div>
+              <div class="font-semibold text-rose-300">Hard Reset OSM</div>
+              <div class="text-[10px] text-rose-400/80">Wipe & re-fetch all 18 holes</div>
+            </div>
+          </button>
+        </div>
+
+        <!-- Group 2: Green & Project Data -->
+        <div class="py-1">
+          <button id="lidar-fetch-btn" type="button"
+            class="w-full text-left px-3.5 py-2 text-xs font-medium text-sky-300 hover:bg-slate-800 flex items-center gap-2.5 transition cursor-pointer">
+            <i data-lucide="mountain-snow" class="w-4 h-4 text-sky-400 shrink-0"></i>
+            <div>
+              <div class="font-semibold text-slate-100"><span id="lidar-btn-text">Refresh Green</span></div>
+              <div class="text-[10px] text-slate-400">Re-query LiDAR & green slope</div>
+            </div>
+          </button>
+
+          <button id="save-project-btn" type="button"
+            class="w-full text-left px-3.5 py-2 text-xs font-medium text-emerald-300 hover:bg-slate-800 flex items-center gap-2.5 transition cursor-pointer">
+            <i data-lucide="download" class="w-4 h-4 text-emerald-400 shrink-0"></i>
+            <div>
+              <div class="font-semibold text-slate-100">Backup JSON</div>
+              <div class="text-[10px] text-slate-400">Export 18-hole project to disk</div>
+            </div>
+          </button>
+
+          <button id="geojson-modal-btn" type="button"
+            class="w-full text-left px-3.5 py-2 text-xs font-medium text-slate-300 hover:bg-slate-800 flex items-center gap-2.5 transition cursor-pointer">
+            <i data-lucide="code-2" class="w-4 h-4 text-emerald-400 shrink-0"></i>
+            <div>
+              <div class="font-semibold text-slate-100">Data</div>
+              <div class="text-[10px] text-slate-400">Import/Export raw GeoJSON</div>
+            </div>
+          </button>
+        </div>
+
+        <!-- Group 3: Output & Print -->
+        <div class="py-1">
+          <button id="print-book-btn" type="button"
+            class="w-full text-left px-3.5 py-2 text-xs font-medium text-amber-200 hover:bg-amber-950/30 flex items-center gap-2.5 transition cursor-pointer">
+            <i data-lucide="printer" class="w-4 h-4 text-amber-400 shrink-0"></i>
+            <div>
+              <div class="font-semibold text-amber-300">Print</div>
+              <div class="text-[10px] text-slate-400">Print or Save PDF of Spreads 1 & 2</div>
+            </div>
+          </button>
+        </div>
+
+      </div>
     </div>
   </header>
 
