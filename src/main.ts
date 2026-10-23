@@ -5910,8 +5910,39 @@ let saveToNeonTimer: any = null;
       showToast("Downloaded Print-Ready Vector SVG!");
     });
 
+    function preparePrintMount() {
+      const c1 = document.getElementById("hole-spread-canvas") as HTMLCanvasElement | null;
+      const c2 = document.getElementById("green-spread-canvas") as HTMLCanvasElement | null;
+      const mount = document.getElementById("print-mount-point");
+      if (!c1 || !c2 || !mount) return;
+
+      try {
+        const img1 = c1.toDataURL("image/png");
+        const img2 = c2.toDataURL("image/png");
+        mount.innerHTML = `
+          <div class="print-page">
+            <img src="${img1}" alt="Spread 1: Full Hole Satellite Book" />
+          </div>
+          <div class="print-page">
+            <img src="${img2}" alt="Spread 2: Tour USGA Green Book" />
+          </div>
+        `;
+      } catch (err) {
+        console.warn("preparePrintMount error:", err);
+      }
+    }
+
+    window.addEventListener("beforeprint", preparePrintMount);
+    window.addEventListener("afterprint", () => {
+      const mount = document.getElementById("print-mount-point");
+      if (mount) mount.innerHTML = "";
+    });
+
     document.getElementById("print-book-btn")?.addEventListener("click", () => {
-      window.print();
+      preparePrintMount();
+      setTimeout(() => {
+        window.print();
+      }, 100);
     });
 
     // Tools & Actions Dropdown Menu Handler
