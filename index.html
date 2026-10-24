@@ -96,7 +96,7 @@
 
     @media print {
       @page {
-        size: portrait;
+        size: 3.75in 10.5in;
         margin: 0;
       }
 
@@ -127,14 +127,20 @@
       .print-page {
         page-break-after: always !important;
         break-after: page !important;
-        width: 100vw !important;
-        height: 100vh !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+        width: 3.75in !important;
+        height: 10.5in !important;
+        max-width: 3.75in !important;
+        max-height: 10.5in !important;
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
         box-sizing: border-box !important;
-        padding: 8mm 12mm !important;
+        padding: 0 !important;
+        margin: 0 auto !important;
         background: white !important;
+        overflow: hidden !important;
       }
 
       .print-page:last-child {
@@ -142,12 +148,13 @@
         break-after: auto !important;
       }
 
-      .print-page img {
+      .print-page img,
+      .print-page svg {
+        width: 3.75in !important;
+        height: 10.5in !important;
         max-width: 100% !important;
         max-height: 100% !important;
-        width: auto !important;
-        height: 100% !important;
-        object-fit: contain !important;
+        object-fit: fill !important;
         display: block !important;
         margin: 0 auto !important;
         box-shadow: none !important;
@@ -309,7 +316,7 @@
             <i data-lucide="printer" class="w-4 h-4 text-amber-400 shrink-0"></i>
             <div>
               <div class="font-semibold text-amber-300">Print</div>
-              <div class="text-[10px] text-slate-400">Print or Save PDF of Spreads 1 & 2</div>
+              <div class="text-[10px] text-slate-400">Compile & Print 18-Hole Yardage Book</div>
             </div>
           </button>
         </div>
