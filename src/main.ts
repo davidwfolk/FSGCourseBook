@@ -5991,6 +5991,223 @@ let saveToNeonTimer: any = null;
 
     let isCompilingPrint = false;
 
+    function extractHalfPanels(sourceCanvas: HTMLCanvasElement): { top: HTMLCanvasElement; bot: HTMLCanvasElement } {
+      const top = document.createElement("canvas");
+      top.width = 540;
+      top.height = 756;
+      const topCtx = top.getContext("2d")!;
+      topCtx.drawImage(sourceCanvas, 0, 0, 540, 756, 0, 0, 540, 756);
+
+      const bot = document.createElement("canvas");
+      bot.width = 540;
+      bot.height = 756;
+      const botCtx = bot.getContext("2d")!;
+      botCtx.drawImage(sourceCanvas, 0, 756, 540, 756, 0, 0, 540, 756);
+
+      return { top, bot };
+    }
+
+    function buildPrinterSheetCanvas(
+      topPanel: HTMLCanvasElement,
+      botPanel: HTMLCanvasElement,
+      sheetNum: number,
+      sideLabel: string,
+      topPageNum: number,
+      botPageNum: number,
+      rotateTop180: boolean = false
+    ): HTMLCanvasElement {
+      const sheet = document.createElement("canvas");
+      sheet.width = 540;
+      sheet.height = 1512;
+      const ctx = sheet.getContext("2d")!;
+
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, 540, 1512);
+
+      if (rotateTop180) {
+        ctx.save();
+        ctx.translate(270, 378);
+        ctx.rotate(Math.PI);
+        ctx.drawImage(topPanel, -270, -378, 540, 756);
+        ctx.restore();
+      } else {
+        ctx.drawImage(topPanel, 0, 0, 540, 756);
+      }
+
+      ctx.drawImage(botPanel, 0, 756, 540, 756);
+
+      // Subtle Center Fold Indicator Line across 5.25"
+      ctx.save();
+      ctx.strokeStyle = "rgba(100, 116, 139, 0.4)";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([6, 6]);
+      ctx.beginPath();
+      ctx.moveTo(0, 756);
+      ctx.lineTo(540, 756);
+      ctx.stroke();
+
+      ctx.fillStyle = "rgba(100, 116, 139, 0.45)";
+      ctx.font = "9px sans-serif";
+      ctx.textAlign = "right";
+      ctx.fillText(`FOLD LINE • Sheet ${sheetNum} (${sideLabel}) • P${topPageNum}/P${botPageNum}`, 532, 751);
+      ctx.restore();
+
+      return sheet;
+    }
+
+    function renderTournamentNotesSpread(courseName: string): { top: HTMLCanvasElement; bot: HTMLCanvasElement } {
+      const top = document.createElement("canvas");
+      top.width = 540;
+      top.height = 756;
+      const tCtx = top.getContext("2d")!;
+
+      tCtx.fillStyle = "#ffffff";
+      tCtx.fillRect(0, 0, 540, 756);
+
+      tCtx.strokeStyle = "#cbd5e1";
+      tCtx.lineWidth = 1.5;
+      tCtx.strokeRect(20, 20, 500, 716);
+
+      tCtx.fillStyle = "#0f172a";
+      tCtx.fillRect(20, 20, 500, 50);
+      tCtx.fillStyle = "#ffffff";
+      tCtx.font = "bold 15px sans-serif";
+      tCtx.textAlign = "center";
+      tCtx.fillText("TOURNAMENT CONDITIONS & ROUND NOTES", 270, 52);
+
+      tCtx.fillStyle = "#334155";
+      tCtx.font = "12px sans-serif";
+      tCtx.textAlign = "left";
+
+      tCtx.fillText("COURSE: " + (courseName || "Lakeview Golf Club"), 35, 105);
+      tCtx.fillText("DATE: ____________________", 35, 135);
+      tCtx.fillText("PLAYER: __________________", 300, 135);
+      tCtx.fillText("WIND: ____________________", 35, 165);
+      tCtx.fillText("STIMP / GREEN SPEED: _____", 300, 165);
+
+      tCtx.fillStyle = "#f1f5f9";
+      tCtx.fillRect(35, 190, 470, 28);
+      tCtx.strokeStyle = "#94a3b8";
+      tCtx.lineWidth = 1;
+      tCtx.strokeRect(35, 190, 470, 120);
+
+      tCtx.fillStyle = "#0f172a";
+      tCtx.font = "bold 11px sans-serif";
+      tCtx.fillText("ELEVATION / TEMPERATURE ADJUSTMENT GUIDE", 45, 208);
+
+      tCtx.font = "11px sans-serif";
+      tCtx.fillStyle = "#475569";
+      tCtx.fillText("+10 ft Elevation = +3 yds carry", 45, 235);
+      tCtx.fillText("-10 ft Elevation = -3 yds carry", 45, 255);
+      tCtx.fillText("10 mph Headwind = +1 club (+10-12y)", 270, 235);
+      tCtx.fillText("10 mph Tailwind = -1 club (-8-10y)", 270, 255);
+      tCtx.fillText("Cold (Under 50°F) = +1 club carry", 45, 285);
+      tCtx.fillText("Hot (Over 85°F) = -3 to -5 yds carry", 270, 285);
+
+      tCtx.fillStyle = "#0f172a";
+      tCtx.font = "bold 12px sans-serif";
+      tCtx.fillText("CADDIE & TARGET STRATEGY NOTES:", 35, 340);
+
+      tCtx.strokeStyle = "#e2e8f0";
+      tCtx.lineWidth = 1;
+      for (let y = 370; y <= 700; y += 30) {
+        tCtx.beginPath();
+        tCtx.moveTo(35, y);
+        tCtx.lineTo(505, y);
+        tCtx.stroke();
+      }
+
+      const bot = document.createElement("canvas");
+      bot.width = 540;
+      bot.height = 756;
+      const bCtx = bot.getContext("2d")!;
+
+      bCtx.fillStyle = "#ffffff";
+      bCtx.fillRect(0, 0, 540, 756);
+
+      bCtx.strokeStyle = "#cbd5e1";
+      bCtx.lineWidth = 1.5;
+      bCtx.strokeRect(20, 20, 500, 716);
+
+      bCtx.fillStyle = "#0f172a";
+      bCtx.fillRect(20, 20, 500, 50);
+      bCtx.fillStyle = "#ffffff";
+      bCtx.font = "bold 15px sans-serif";
+      bCtx.textAlign = "center";
+      bCtx.fillText("ROUND SCORING & PERFORMANCE MATRIX", 270, 52);
+
+      const rowH = 26;
+      const startY = 95;
+      const cols = [
+        { label: "HOLE", x: 35, w: 45 },
+        { label: "PAR", x: 80, w: 40 },
+        { label: "YARDS", x: 120, w: 55 },
+        { label: "SCORE", x: 175, w: 55 },
+        { label: "FAIRWAY", x: 230, w: 65 },
+        { label: "GIR", x: 295, w: 55 },
+        { label: "PUTTS", x: 350, w: 55 },
+        { label: "UP / DOWN", x: 405, w: 100 }
+      ];
+
+      bCtx.fillStyle = "#f8fafc";
+      bCtx.fillRect(35, startY, 470, rowH);
+      bCtx.strokeStyle = "#94a3b8";
+      bCtx.lineWidth = 1;
+      bCtx.strokeRect(35, startY, 470, rowH * 21);
+
+      bCtx.fillStyle = "#0f172a";
+      bCtx.font = "bold 10px sans-serif";
+      cols.forEach(c => {
+        bCtx.fillText(c.label, c.x + c.w / 2, startY + 17);
+      });
+
+      let curY = startY + rowH;
+
+      for (let r = 1; r <= 20; r++) {
+        bCtx.beginPath();
+        bCtx.moveTo(35, curY);
+        bCtx.lineTo(505, curY);
+        bCtx.stroke();
+
+        let rowTitle = "";
+        if (r <= 9) rowTitle = String(r);
+        else if (r === 10) rowTitle = "OUT";
+        else if (r <= 19) rowTitle = String(r - 1);
+        else if (r === 20) rowTitle = "TOTAL";
+
+        if (r === 10 || r === 20) {
+          bCtx.fillStyle = "#f1f5f9";
+          bCtx.fillRect(35, curY - rowH + 1, 470, rowH - 1);
+          bCtx.fillStyle = "#0f172a";
+          bCtx.font = "bold 10px sans-serif";
+        } else {
+          bCtx.fillStyle = "#334155";
+          bCtx.font = "10px sans-serif";
+        }
+
+        bCtx.textAlign = "center";
+        bCtx.fillText(rowTitle, cols[0].x + cols[0].w / 2, curY - 8);
+
+        cols.forEach((c, idx) => {
+          if (idx > 0) {
+            bCtx.beginPath();
+            bCtx.moveTo(c.x, startY);
+            bCtx.lineTo(c.x, startY + rowH * 21);
+            bCtx.stroke();
+          }
+        });
+
+        curY += rowH;
+      }
+
+      bCtx.fillStyle = "#64748b";
+      bCtx.font = "10px monospace";
+      bCtx.textAlign = "center";
+      bCtx.fillText("</FULL STACK GOLF> • USGA RULE 4.3 COMPLIANT • fullstackgolf.com", 270, 715);
+
+      return { top, bot };
+    }
+
     async function compile18HoleBookForPrint(): Promise<void> {
       if (isCompilingPrint) return;
       isCompilingPrint = true;
@@ -6003,21 +6220,17 @@ let saveToNeonTimer: any = null;
 
       const statusEl = document.getElementById("status-text");
       const origStatus = statusEl ? statusEl.textContent : "";
-      setStatus("Compiling 18-Hole Tourbook for print...");
-      showToast("Compiling full 18-hole yardage book for print...");
+      setStatus("Compiling Saddle-Stitch Tournament Yardage Book...");
+      showToast("Compiling Saddle-Stitched 18-hole Tourbook...");
 
-      // Save current active hole state first
       saveStateToLocalStorage(false);
 
-      // Preserve current UI state so we can restore it exactly after compilation
       const originalHoleNum = parseInt((document.getElementById("meta-hole-num") as HTMLInputElement)?.value || "1", 10) || 1;
       const originalHoleData = JSON.parse(JSON.stringify(holeData));
 
-      // Determine course name and location
       const courseName = (document.getElementById("meta-course-name") as HTMLInputElement)?.value || "Lakeview Golf Club";
       const locationStr = "Meridian, Idaho";
 
-      // Create offscreen canvases for rendering spreads (540 x 1512 px = 3.75" x 10.5")
       const offscreenHole = document.createElement("canvas");
       offscreenHole.width = 540;
       offscreenHole.height = 1512;
@@ -6026,29 +6239,33 @@ let saveToNeonTimer: any = null;
       offscreenGreen.width = 540;
       offscreenGreen.height = 1512;
 
-      const pagesHtml: string[] = [];
-
       try {
-        // 1. PAGE 1: Outer Cover Wrap (Front & Back Imposition)
+        // 1. Prepare Cover Panels (Front and Back)
         const coverSvgDataUrl = await generateCoverSheetSvg(courseName, locationStr);
-        if (coverSvgDataUrl) {
-          pagesHtml.push(`
-            <div class="print-page print-cover">
-              <img src="${coverSvgDataUrl}" alt="Outer Cover Wrap (Front & Back)" />
-            </div>
-          `);
-        }
+        const coverImg = new Image();
+        coverImg.src = coverSvgDataUrl;
+        await new Promise((res) => {
+          coverImg.onload = () => res(null);
+          coverImg.onerror = () => res(null);
+        });
 
-        // 2. PAGES 2-37: 18 Sequential Holes (Spread 1: Satellite Map, Spread 2: 3-Panel Green Book)
-        const targetHoles: number[] = [];
+        const coverFullCanvas = document.createElement("canvas");
+        coverFullCanvas.width = 540;
+        coverFullCanvas.height = 1512;
+        coverFullCanvas.getContext("2d")!.drawImage(coverImg, 0, 0, 540, 1512);
+
+        // In cover_sheet.svg, top half (0..756) is Back Cover (already 180° inverted), bottom half (756..1512) is Front Cover
+        const coverPanels = extractHalfPanels(coverFullCanvas);
+        const coverTop = coverPanels.top; // Back Cover (Page 76)
+        const coverBot = coverPanels.bot; // Front Cover (Page 1)
+
+        // 2. Prepare 18 Holes Spreads
+        const holeMapPanels: Record<number, { top: HTMLCanvasElement; bot: HTMLCanvasElement }> = {};
+        const greenPanels: Record<number, { top: HTMLCanvasElement; bot: HTMLCanvasElement }> = {};
+
         for (let h = 1; h <= 18; h++) {
-          targetHoles.push(h);
-        }
+          setStatus(`Rendering Hole ${h} of 18 spreads...`);
 
-        for (const h of targetHoles) {
-          setStatus(`Compiling Hole ${h} of 18...`);
-
-          // Load hole data from store or initialize placeholder
           if (courseHolesStore[h] && courseHolesStore[h].features && courseHolesStore[h].features.length > 0) {
             holeData = JSON.parse(JSON.stringify(courseHolesStore[h]));
           } else if (h === originalHoleNum && originalHoleData.features && originalHoleData.features.length > 0) {
@@ -6061,7 +6278,6 @@ let saveToNeonTimer: any = null;
             };
           }
 
-          // Temporarily set DOM inputs so subroutines read current hole parameters
           const elNum = document.getElementById("meta-hole-num") as HTMLInputElement | null;
           if (elNum) elNum.value = String(h);
           const elPar = document.getElementById("meta-hole-par") as HTMLInputElement | null;
@@ -6071,31 +6287,18 @@ let saveToNeonTimer: any = null;
           const elSlopePct = document.getElementById("meta-green-slope-pct") as HTMLInputElement | null;
           if (elSlopePct) elSlopePct.value = String(holeData.meta?.greenSlopePct || 2.8);
 
-          // Auto-generate layup dots if needed
           autoPopulateFairwayDots(false, false);
-
-          // Compute spatial model for this hole
           const model = computeSpatialHoleModel();
 
-          // Preload satellite tiles if green coordinates are valid
           if (model.greenCoord && model.greenCoord[0] && model.greenCoord[1]) {
             try {
               await preloadSatelliteTiles(model.greenCoord[0], model.greenCoord[1], 160, 480);
-            } catch (e) {
-              console.warn(`Tile preload failed for hole ${h}:`, e);
-            }
+            } catch (e) { }
           }
 
-          // Render Spread 1 (Satellite Hole Map)
           renderHoleSpread(model, offscreenHole);
-          const holeImgUrl = offscreenHole.toDataURL("image/png");
-          pagesHtml.push(`
-            <div class="print-page print-hole-map" data-hole="${h}">
-              <img src="${holeImgUrl}" alt="Hole ${h} - Satellite Yardage Map" />
-            </div>
-          `);
+          holeMapPanels[h] = extractHalfPanels(offscreenHole);
 
-          // Preload Green LiDAR image if cached
           const grid = holeData.lidarGrid || (holeData as any).lidar_grid;
           const greenSrc = grid?.image_url || grid?.image_base64;
           if (greenSrc) {
@@ -6115,33 +6318,94 @@ let saveToNeonTimer: any = null;
             }
           }
 
-          // Render Spread 2 (3-Panel USGA 1:480 Green Complex)
           renderGreenSpread(model, offscreenGreen);
-          const greenImgUrl = offscreenGreen.toDataURL("image/png");
-          pagesHtml.push(`
-            <div class="print-page print-green-complex" data-hole="${h}">
-              <img src="${greenImgUrl}" alt="Hole ${h} - USGA 1:480 Green Complex" />
+          greenPanels[h] = extractHalfPanels(offscreenGreen);
+
+          await new Promise((r) => setTimeout(r, 10));
+        }
+
+        // 3. Prepare Tournament Notes Spread
+        const notesPanels = renderTournamentNotesSpread(courseName);
+
+        // 4. Map Reader Pages (1..76)
+        const readerPages: Record<number, HTMLCanvasElement> = {};
+        readerPages[1] = coverBot; // Front Cover
+
+        for (let h = 1; h <= 18; h++) {
+          const mapIdx = 2 + 4 * (h - 1);
+          readerPages[mapIdx] = holeMapPanels[h].top;
+          readerPages[mapIdx + 1] = holeMapPanels[h].bot;
+
+          const grnIdx = 4 + 4 * (h - 1);
+          readerPages[grnIdx] = greenPanels[h].top;
+          readerPages[grnIdx + 1] = greenPanels[h].bot;
+        }
+
+        readerPages[74] = notesPanels.top;
+        readerPages[75] = notesPanels.bot;
+        readerPages[76] = coverTop; // Back Cover
+
+        // 5. Saddle-Stitch Imposition Engine (19 physical sheets = 38 printer pages)
+        const N = 76;
+        const K = 19;
+        const sheetsHtml: string[] = [];
+
+        setStatus("Assembling 19 saddle-stitch duplex sheets...");
+
+        for (let S = 1; S <= K; S++) {
+          const sideA_topNum = N - 2 * (S - 1);
+          const sideA_botNum = 2 * S - 1;
+          const sideB_topNum = 2 * S;
+          const sideB_botNum = N - 2 * (S - 1) - 1;
+
+          // Side A (Front of physical sheet)
+          const sheetA = buildPrinterSheetCanvas(
+            readerPages[sideA_topNum],
+            readerPages[sideA_botNum],
+            S,
+            "Side A - Front",
+            sideA_topNum,
+            sideA_botNum,
+            false
+          );
+          const urlA = sheetA.toDataURL("image/png");
+          sheetsHtml.push(`
+            <div class="print-page print-sheet" data-sheet="${S}" data-side="A" title="Sheet ${S} Side A • P${sideA_topNum} / P${sideA_botNum}">
+              <img src="${urlA}" alt="Sheet ${S} Side A (P${sideA_topNum} / P${sideA_botNum})" />
             </div>
           `);
 
-          // Brief tick to allow UI to breathe
-          await new Promise((r) => setTimeout(r, 15));
+          // Side B (Back of physical sheet)
+          const sheetB = buildPrinterSheetCanvas(
+            readerPages[sideB_topNum],
+            readerPages[sideB_botNum],
+            S,
+            "Side B - Back",
+            sideB_topNum,
+            sideB_botNum,
+            false
+          );
+          const urlB = sheetB.toDataURL("image/png");
+          sheetsHtml.push(`
+            <div class="print-page print-sheet" data-sheet="${S}" data-side="B" title="Sheet ${S} Side B • P${sideB_topNum} / P${sideB_botNum}">
+              <img src="${urlB}" alt="Sheet ${S} Side B (P${sideB_topNum} / P${sideB_botNum})" />
+            </div>
+          `);
         }
 
-        mount.innerHTML = pagesHtml.join("\n");
-        setStatus("Booklet compilation complete! Launching print preview...");
-        showToast(`Compiled ${pagesHtml.length} pages! Opening print preview...`);
+        mount.innerHTML = sheetsHtml.join("\n");
+        setStatus("Saddle-stitch compilation complete! Opening print preview...");
+        showToast(`Compiled ${K} duplex sheets (${sheetsHtml.length} printer pages) ready to fold & staple!`);
 
         setTimeout(() => {
           window.print();
-        }, 150);
+        }, 180);
       } catch (err) {
         console.error("compile18HoleBookForPrint error:", err);
-        showToast("Error compiling yardage book: " + (err as any)?.message);
+        showToast("Error compiling saddle-stitch book: " + (err as any)?.message);
       } finally {
         isCompilingPrint = false;
 
-        // Restore user's active hole data & UI
         holeData = originalHoleData;
         const elNum = document.getElementById("meta-hole-num") as HTMLInputElement | null;
         if (elNum) elNum.value = String(originalHoleNum);
@@ -6160,7 +6424,7 @@ let saveToNeonTimer: any = null;
 
     function prepareFallbackPrintMount() {
       const mount = document.getElementById("print-mount-point");
-      if (!mount || mount.children.length > 0) return; // Already has compiled pages
+      if (!mount || mount.children.length > 0) return;
       const c1 = document.getElementById("hole-spread-canvas") as HTMLCanvasElement | null;
       const c2 = document.getElementById("green-spread-canvas") as HTMLCanvasElement | null;
       if (!c1 || !c2) return;
